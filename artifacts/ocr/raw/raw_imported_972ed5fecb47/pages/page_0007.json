@@ -1,0 +1,1015 @@
+{
+  "contents": [
+    [
+      {
+        "boundingBox": [
+          [
+            93,
+            113
+          ],
+          [
+            93,
+            135
+          ],
+          [
+            568,
+            113
+          ],
+          [
+            568,
+            135
+          ]
+        ],
+        "id": 0,
+        "isVertical": "true",
+        "text": "1.先行研究展望とマイノリティをめぐる史料",
+        "isTextline": "true",
+        "confidence": 0.96,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            92,
+            172
+          ],
+          [
+            92,
+            190
+          ],
+          [
+            201,
+            172
+          ],
+          [
+            201,
+            190
+          ]
+        ],
+        "id": 1,
+        "isVertical": "true",
+        "text": "先行研究展望",
+        "isTextline": "true",
+        "confidence": 0.929,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            113,
+            202
+          ],
+          [
+            113,
+            220
+          ],
+          [
+            919,
+            202
+          ],
+          [
+            919,
+            220
+          ]
+        ],
+        "id": 2,
+        "isVertical": "true",
+        "text": "『漂民聞書』は、田原藩主の三宅康保が1855年に藩士村上範致・菅生景福・稲熊元長の三人に命じ",
+        "isTextline": "true",
+        "confidence": 0.946,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            93,
+            233
+          ],
+          [
+            93,
+            251
+          ],
+          [
+            919,
+            233
+          ],
+          [
+            919,
+            251
+          ]
+        ],
+        "id": 3,
+        "isVertical": "true",
+        "text": "て、田原に帰った漂流民作蔵と勇次郎から漂流の顛末を書きとらせたものである。全12巻が完成し",
+        "isTextline": "true",
+        "confidence": 0.95,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            93,
+            262
+          ],
+          [
+            93,
+            280
+          ],
+          [
+            919,
+            262
+          ],
+          [
+            919,
+            280
+          ]
+        ],
+        "id": 4,
+        "isVertical": "true",
+        "text": "たのは1856年正月のことであった4。『漂民聞書』は田原市指定文化財で田原市博物館に収められて",
+        "isTextline": "true",
+        "confidence": 0.943,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            93,
+            291
+          ],
+          [
+            93,
+            310
+          ],
+          [
+            920,
+            291
+          ],
+          [
+            920,
+            310
+          ]
+        ],
+        "id": 5,
+        "isVertical": "true",
+        "text": "いる。山田哲夫がまとめた一覧にあるように『漂民聞書』以外にも永久丸の漂流史料は数多ある。中",
+        "isTextline": "true",
+        "confidence": 0.947,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            93,
+            321
+          ],
+          [
+            93,
+            340
+          ],
+          [
+            918,
+            321
+          ],
+          [
+            918,
+            340
+          ]
+        ],
+        "id": 6,
+        "isVertical": "true",
+        "text": "でも『亜米利加漂流御日記抄』は、下田奉行所からの命を受けての公的な記録である『漂民聞書』よ",
+        "isTextline": "true",
+        "confidence": 0.942,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            96,
+            351
+          ],
+          [
+            96,
+            369
+          ],
+          [
+            919,
+            351
+          ],
+          [
+            919,
+            369
+          ]
+        ],
+        "id": 7,
+        "isVertical": "true",
+        "text": "りも1年前の1855年に完成した1。 『三河文献文献文献集成』近世編 上に収められ",
+        "isTextline": "true",
+        "confidence": 0.943,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            93,
+            381
+          ],
+          [
+            93,
+            399
+          ],
+          [
+            919,
+            381
+          ],
+          [
+            919,
+            399
+          ]
+        ],
+        "id": 8,
+        "isVertical": "true",
+        "text": "ていて、 本稿ではこのデジタル史料を",
+        "isTextline": "true",
+        "confidence": 0.948,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            92,
+            411
+          ],
+          [
+            92,
+            429
+          ],
+          [
+            920,
+            411
+          ],
+          [
+            920,
+            429
+          ]
+        ],
+        "id": 9,
+        "isVertical": "true",
+        "text": "検証の対象とする。『漂民聞書』の語りの中身については、山田によって調書を取る側の推測が混在",
+        "isTextline": "true",
+        "confidence": 0.949,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            92,
+            441
+          ],
+          [
+            92,
+            458
+          ],
+          [
+            919,
+            441
+          ],
+          [
+            919,
+            458
+          ]
+        ],
+        "id": 10,
+        "isVertical": "true",
+        "text": "することが指摘されており、このほか二人を救助したアイザック・ハウランド号の乗組員のリストや、",
+        "isTextline": "true",
+        "confidence": 0.945,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            92,
+            471
+          ],
+          [
+            92,
+            488
+          ],
+          [
+            458,
+            471
+          ],
+          [
+            458,
+            488
+          ]
+        ],
+        "id": 11,
+        "isVertical": "true",
+        "text": "二人が乗った船に関する山田の論考がある6。",
+        "isTextline": "true",
+        "confidence": 0.959,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            109,
+            500
+          ],
+          [
+            109,
+            518
+          ],
+          [
+            920,
+            500
+          ],
+          [
+            920,
+            518
+          ]
+        ],
+        "id": 12,
+        "isVertical": "true",
+        "text": "一方、アメリカ史や環太平洋史のニューベッドフォードと捕鯨業についての先行研究をみると、捕",
+        "isTextline": "true",
+        "confidence": 0.949,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            91,
+            530
+          ],
+          [
+            91,
+            548
+          ],
+          [
+            921,
+            530
+          ],
+          [
+            921,
+            548
+          ]
+        ],
+        "id": 13,
+        "isVertical": "true",
+        "text": "鯨業の盛衰と捕鯨に携わった人々については、エリック・ジェイ・ドリンによる『クジラとアメリカー",
+        "isTextline": "true",
+        "confidence": 0.944,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            94,
+            560
+          ],
+          [
+            94,
+            577
+          ],
+          [
+            919,
+            560
+          ],
+          [
+            919,
+            577
+          ]
+        ],
+        "id": 14,
+        "isVertical": "true",
+        "text": "アメリカ捕鯨全史』が代表的な通史として挙げられる。そこでは、奴隷制に反対するクェーカー(フ",
+        "isTextline": "true",
+        "confidence": 0.946,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            95,
+            589
+          ],
+          [
+            95,
+            607
+          ],
+          [
+            921,
+            589
+          ],
+          [
+            921,
+            607
+          ]
+        ],
+        "id": 15,
+        "isVertical": "true",
+        "text": "レンド派) ニューベッドフォードはフレデリック・ダ",
+        "isTextline": "true",
+        "confidence": 0.944,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            94,
+            619
+          ],
+          [
+            94,
+            637
+          ],
+          [
+            918,
+            619
+          ],
+          [
+            918,
+            637
+          ]
+        ],
+        "id": 16,
+        "isVertical": "true",
+        "text": "グラスがそうであったように、逃亡奴隷が目指した場所であった3。『漂民聞書』のなかで言及された、",
+        "isTextline": "true",
+        "confidence": 0.944,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            92,
+            649
+          ],
+          [
+            92,
+            667
+          ],
+          [
+            920,
+            649
+          ],
+          [
+            920,
+            667
+          ]
+        ],
+        "id": 17,
+        "isVertical": "true",
+        "text": "黒人をめぐる人種関係についての先行研究としては、マーサ・ホーズによるマサチューセッツを舞台",
+        "isTextline": "true",
+        "confidence": 0.947,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            93,
+            679
+          ],
+          [
+            93,
+            697
+          ],
+          [
+            920,
+            679
+          ],
+          [
+            920,
+            697
+          ]
+        ],
+        "id": 18,
+        "isVertical": "true",
+        "text": "の一つとした異人種間結婚の歴史が嚆矢である\"。関連して大森一輝は、1843年までに異人種間結婚",
+        "isTextline": "true",
+        "confidence": 0.949,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            92,
+            709
+          ],
+          [
+            92,
+            727
+          ],
+          [
+            918,
+            709
+          ],
+          [
+            918,
+            727
+          ]
+        ],
+        "id": 19,
+        "isVertical": "true",
+        "text": "禁止法と列車内での差別待遇撤廃を勝ち取った過程と、全米で最初に1865年劇場や教会等における",
+        "isTextline": "true",
+        "confidence": 0.948,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            93,
+            739
+          ],
+          [
+            93,
+            756
+          ],
+          [
+            918,
+            739
+          ],
+          [
+            918,
+            756
+          ]
+        ],
+        "id": 20,
+        "isVertical": "true",
+        "text": "人種分離を廃止する州公民権法成立へ向けた過程を綿密に論じている10。さらにアンバー・モルトン",
+        "isTextline": "true",
+        "confidence": 0.943,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            93,
+            769
+          ],
+          [
+            93,
+            786
+          ],
+          [
+            920,
+            769
+          ],
+          [
+            920,
+            786
+          ]
+        ],
+        "id": 21,
+        "isVertical": "true",
+        "text": "は、1842年にニューベッドフォードからトーントンまでの「白人専用」の列車内で行われた座り込",
+        "isTextline": "true",
+        "confidence": 0.939,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            93,
+            799
+          ],
+          [
+            93,
+            816
+          ],
+          [
+            670,
+            799
+          ],
+          [
+            670,
+            816
+          ]
+        ],
+        "id": 22,
+        "isVertical": "true",
+        "text": "みが、1843年の法律制定に向けた大きな動きであったことを論じた11。",
+        "isTextline": "true",
+        "confidence": 0.948,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            109,
+            828
+          ],
+          [
+            109,
+            846
+          ],
+          [
+            919,
+            828
+          ],
+          [
+            919,
+            846
+          ]
+        ],
+        "id": 23,
+        "isVertical": "true",
+        "text": "環大西洋史の視点では、田中きく代を主編者とした二つの論文集が現在の日本における環大西洋の",
+        "isTextline": "true",
+        "confidence": 0.943,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            92,
+            857
+          ],
+          [
+            92,
+            875
+          ],
+          [
+            920,
+            857
+          ],
+          [
+            920,
+            875
+          ]
+        ],
+        "id": 24,
+        "isVertical": "true",
+        "text": "海をめぐる研究の到達点だといえよう。 田中によれば19世紀前半や18世紀にさかのぼり、人々は「海",
+        "isTextline": "true",
+        "confidence": 0.942,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            93,
+            887
+          ],
+          [
+            93,
+            905
+          ],
+          [
+            918,
+            887
+          ],
+          [
+            918,
+            905
+          ]
+        ],
+        "id": 25,
+        "isVertical": "true",
+        "text": "での活動を安全にするために、あるいは危険と折り合いをつけるために、海という自然を『飼い慣ら』",
+        "isTextline": "true",
+        "confidence": 0.94,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            93,
+            917
+          ],
+          [
+            93,
+            936
+          ],
+          [
+            919,
+            917
+          ],
+          [
+            919,
+            936
+          ]
+        ],
+        "id": 26,
+        "isVertical": "true",
+        "text": "そう」としていた12。「海を飼いならす」ための「海のリテラシー」は、日本人漂流者たちも持って",
+        "isTextline": "true",
+        "confidence": 0.937,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            93,
+            947
+          ],
+          [
+            93,
+            965
+          ],
+          [
+            921,
+            947
+          ],
+          [
+            921,
+            965
+          ]
+        ],
+        "id": 27,
+        "isVertical": "true",
+        "text": "いたはずである。ただし、江戸時代に漂流が増加した背景には、貿易が出島経由に限定されたため航",
+        "isTextline": "true",
+        "confidence": 0.941,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            92,
+            976
+          ],
+          [
+            92,
+            994
+          ],
+          [
+            919,
+            976
+          ],
+          [
+            919,
+            994
+          ]
+        ],
+        "id": 28,
+        "isVertical": "true",
+        "text": "海術が発展しなかったことと、 さらに本稿が対",
+        "isTextline": "true",
+        "confidence": 0.946,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            92,
+            1006
+          ],
+          [
+            92,
+            1025
+          ],
+          [
+            918,
+            1006
+          ],
+          [
+            918,
+            1025
+          ]
+        ],
+        "id": 29,
+        "isVertical": "true",
+        "text": "象とする『漂民聞書』に書かれる情報を作蔵と勇次郎が誰から入手したのか、という点に関しては、",
+        "isTextline": "true",
+        "confidence": 0.941,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            92,
+            1037
+          ],
+          [
+            92,
+            1054
+          ],
+          [
+            688,
+            1037
+          ],
+          [
+            688,
+            1054
+          ]
+        ],
+        "id": 30,
+        "isVertical": "true",
+        "text": "水夫たちの共有する航海譚を検証した笠井俊和による論考が参考になる。",
+        "isTextline": "true",
+        "confidence": 0.956,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            111,
+            1096
+          ],
+          [
+            111,
+            1114
+          ],
+          [
+            919,
+            1096
+          ],
+          [
+            919,
+            1114
+          ]
+        ],
+        "id": 31,
+        "isVertical": "true",
+        "text": "洋上に孤立する船という狭い空間で、同じ顔触れで長い期間を過ごす水夫たちの語る物語は、集団",
+        "isTextline": "true",
+        "confidence": 0.952,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            111,
+            1125
+          ],
+          [
+            111,
+            1143
+          ],
+          [
+            920,
+            1125
+          ],
+          [
+            920,
+            1143
+          ]
+        ],
+        "id": 32,
+        "isVertical": "true",
+        "text": "の内部で経験を交換・伝承する役割と担い、危険と向き合う水夫に必要とされる生存のための知識",
+        "isTextline": "true",
+        "confidence": 0.948,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            110,
+            1155
+          ],
+          [
+            110,
+            1173
+          ],
+          [
+            919,
+            1155
+          ],
+          [
+            919,
+            1173
+          ]
+        ],
+        "id": 33,
+        "isVertical": "true",
+        "text": "が織り込まれていたという。 専制的な",
+        "isTextline": "true",
+        "confidence": 0.948,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            111,
+            1185
+          ],
+          [
+            111,
+            1203
+          ],
+          [
+            920,
+            1185
+          ],
+          [
+            920,
+            1203
+          ]
+        ],
+        "id": 34,
+        "isVertical": "true",
+        "text": "上官に対していかに抵抗すべきか、そして語り手は実際にどのような対応をしたのか、といった(時",
+        "isTextline": "true",
+        "confidence": 0.944,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            112,
+            1216
+          ],
+          [
+            112,
+            1233
+          ],
+          [
+            611,
+            1216
+          ],
+          [
+            611,
+            1233
+          ]
+        ],
+        "id": 35,
+        "isVertical": "true",
+        "text": "には又聞きの)内容を、水夫同士で語り合う習性があった14。",
+        "isTextline": "true",
+        "confidence": 0.947,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            92,
+            1275
+          ],
+          [
+            92,
+            1292
+          ],
+          [
+            919,
+            1275
+          ],
+          [
+            919,
+            1292
+          ]
+        ],
+        "id": 36,
+        "isVertical": "true",
+        "text": "笠井の論考は本稿とは対象とする時代や場所が異なるが、捕鯨の途中下船しない限り、1年以上船の",
+        "isTextline": "true",
+        "confidence": 0.954,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            92,
+            1304
+          ],
+          [
+            92,
+            1322
+          ],
+          [
+            919,
+            1304
+          ],
+          [
+            919,
+            1322
+          ]
+        ],
+        "id": 37,
+        "isVertical": "true",
+        "text": "中で寝起きを共にする日常にはそう変わりはなかった。そこで水夫たちの情報ネットワークの具体的",
+        "isTextline": "true",
+        "confidence": 0.953,
+        "class_index": 1
+      }
+    ]
+  ],
+  "imginfo": {
+    "img_width": 1032,
+    "img_height": 1458,
+    "img_path": "C:\\sourceRead\\standalone-ocr-desk\\artifacts\\ocr\\work\\region-ocr\\raw_imported_972ed5fecb47\\page_0007\\full_page\\images\\region.png",
+    "img_name": "region.png"
+  },
+  "batch_ocr": {
+    "run_id": "run_ext_1781718371",
+    "source_id": "raw_imported_972ed5fecb47",
+    "page": 7,
+    "engine": "ndlocr_lite",
+    "status": "candidate",
+    "created_at": "2026-06-17T17:47:43.686945+00:00"
+  },
+  "page_ocr": {
+    "source_id": "raw_imported_972ed5fecb47",
+    "page": 7,
+    "ocr_engine": "ndlocr_lite",
+    "created_at": "2026-06-17T17:47:43.690610+00:00",
+    "status": "completed"
+  }
+}

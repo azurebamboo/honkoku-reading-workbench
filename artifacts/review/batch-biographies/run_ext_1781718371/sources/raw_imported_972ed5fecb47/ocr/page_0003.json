@@ -1,0 +1,878 @@
+{
+  "contents": [
+    [
+      {
+        "boundingBox": [
+          [
+            239,
+            119
+          ],
+          [
+            239,
+            151
+          ],
+          [
+            775,
+            119
+          ],
+          [
+            775,
+            151
+          ]
+        ],
+        "id": 0,
+        "isVertical": "true",
+        "text": "『研究紀要』第18号の発刊によせて",
+        "isTextline": "true",
+        "confidence": 0.96,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            92,
+            179
+          ],
+          [
+            92,
+            197
+          ],
+          [
+            920,
+            179
+          ],
+          [
+            920,
+            197
+          ]
+        ],
+        "id": 1,
+        "isVertical": "true",
+        "text": "海外移住資料館『研究紀要』第18号が、多くの方々のお力添えを得て完成いたしましたので、お手",
+        "isTextline": "true",
+        "confidence": 0.95,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            92,
+            210
+          ],
+          [
+            92,
+            227
+          ],
+          [
+            918,
+            210
+          ],
+          [
+            918,
+            227
+          ]
+        ],
+        "id": 2,
+        "isVertical": "true",
+        "text": "元にお届けいたします。学術委員会が中心となって立ち上げ、進めてまいりました研究プロジェクト",
+        "isTextline": "true",
+        "confidence": 0.944,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            92,
+            239
+          ],
+          [
+            92,
+            256
+          ],
+          [
+            919,
+            239
+          ],
+          [
+            919,
+            256
+          ]
+        ],
+        "id": 3,
+        "isVertical": "true",
+        "text": "の成果に加え、若い研究者の論文や資料紹介が、ここに掲載されておりますので、ご覧ください。海",
+        "isTextline": "true",
+        "confidence": 0.944,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            92,
+            267
+          ],
+          [
+            92,
+            285
+          ],
+          [
+            919,
+            267
+          ],
+          [
+            919,
+            285
+          ]
+        ],
+        "id": 4,
+        "isVertical": "true",
+        "text": "外移住資料館の目的である「海外移住と日系人社会に関する知識の普及」と「移住に関する資料・情",
+        "isTextline": "true",
+        "confidence": 0.948,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            92,
+            298
+          ],
+          [
+            92,
+            315
+          ],
+          [
+            918,
+            298
+          ],
+          [
+            918,
+            315
+          ]
+        ],
+        "id": 5,
+        "isVertical": "true",
+        "text": "報の整備と提供」を達成するための努力が、本年度もこのような形で結実しましたこと、そして、そ",
+        "isTextline": "true",
+        "confidence": 0.953,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            92,
+            327
+          ],
+          [
+            92,
+            344
+          ],
+          [
+            920,
+            327
+          ],
+          [
+            920,
+            344
+          ]
+        ],
+        "id": 6,
+        "isVertical": "true",
+        "text": "れを皆様と共有できますことを、関係者一同、大変うれしく、誇らしく思っております。皆様のご協",
+        "isTextline": "true",
+        "confidence": 0.953,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            93,
+            356
+          ],
+          [
+            93,
+            373
+          ],
+          [
+            429,
+            356
+          ],
+          [
+            429,
+            373
+          ]
+        ],
+        "id": 7,
+        "isVertical": "true",
+        "text": "力、ご尽力に、心よりお礼申し上げます。",
+        "isTextline": "true",
+        "confidence": 0.953,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            92,
+            415
+          ],
+          [
+            92,
+            432
+          ],
+          [
+            918,
+            415
+          ],
+          [
+            918,
+            432
+          ]
+        ],
+        "id": 8,
+        "isVertical": "true",
+        "text": "学術委員会が中心となって立ち上げ、進行してきました研究プロジェクト(2021年度-2023年度)",
+        "isTextline": "true",
+        "confidence": 0.945,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            93,
+            445
+          ],
+          [
+            93,
+            462
+          ],
+          [
+            919,
+            445
+          ],
+          [
+            919,
+            462
+          ]
+        ],
+        "id": 9,
+        "isVertical": "true",
+        "text": "は以下の4つです。それぞれの研究概要は、本号の165～166ページに記されていますので、ご参",
+        "isTextline": "true",
+        "confidence": 0.939,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            92,
+            474
+          ],
+          [
+            92,
+            491
+          ],
+          [
+            189,
+            474
+          ],
+          [
+            189,
+            491
+          ]
+        ],
+        "id": 10,
+        "isVertical": "true",
+        "text": "照ください。",
+        "isTextline": "true",
+        "confidence": 0.944,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            93,
+            533
+          ],
+          [
+            93,
+            550
+          ],
+          [
+            463,
+            533
+          ],
+          [
+            463,
+            550
+          ]
+        ],
+        "id": 11,
+        "isVertical": "true",
+        "text": "1個人記録と移民史記述に関する多角的検討",
+        "isTextline": "true",
+        "confidence": 0.945,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            91,
+            562
+          ],
+          [
+            91,
+            579
+          ],
+          [
+            628,
+            562
+          ],
+          [
+            628,
+            579
+          ]
+        ],
+        "id": 12,
+        "isVertical": "true",
+        "text": "2海外移動・移送と「絆」の視点からみるグローバルヒストリー",
+        "isTextline": "true",
+        "confidence": 0.946,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            92,
+            591
+          ],
+          [
+            92,
+            608
+          ],
+          [
+            519,
+            591
+          ],
+          [
+            519,
+            608
+          ]
+        ],
+        "id": 13,
+        "isVertical": "true",
+        "text": "3日系カナダ人の経験を通してみる戦後の日加関係",
+        "isTextline": "true",
+        "confidence": 0.954,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            92,
+            621
+          ],
+          [
+            92,
+            638
+          ],
+          [
+            739,
+            621
+          ],
+          [
+            739,
+            638
+          ]
+        ],
+        "id": 14,
+        "isVertical": "true",
+        "text": "4海外移住資料館のリニューアル展示を活用した『学習活動の手引き』の改訂",
+        "isTextline": "true",
+        "confidence": 0.95,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            95,
+            679
+          ],
+          [
+            95,
+            696
+          ],
+          [
+            919,
+            679
+          ],
+          [
+            919,
+            696
+          ]
+        ],
+        "id": 15,
+        "isVertical": "true",
+        "text": "どのプロジェクトも、大変活発に活動し、多様な側面から「移住・移動」について研究を深め、成果",
+        "isTextline": "true",
+        "confidence": 0.946,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            93,
+            708
+          ],
+          [
+            93,
+            726
+          ],
+          [
+            918,
+            708
+          ],
+          [
+            918,
+            726
+          ]
+        ],
+        "id": 16,
+        "isVertical": "true",
+        "text": "を挙げました。本年度も、コロナ禍が完全に収まったとは言えず、研究プロジェクトの活動は制限さ",
+        "isTextline": "true",
+        "confidence": 0.946,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            92,
+            738
+          ],
+          [
+            92,
+            755
+          ],
+          [
+            918,
+            738
+          ],
+          [
+            918,
+            755
+          ]
+        ],
+        "id": 17,
+        "isVertical": "true",
+        "text": "れましたが、一方で、テクノロジーの助けを得て、新たな形態での講演や研究発表が定着し、今後さ",
+        "isTextline": "true",
+        "confidence": 0.95,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            95,
+            766
+          ],
+          [
+            95,
+            784
+          ],
+          [
+            919,
+            766
+          ],
+          [
+            919,
+            784
+          ]
+        ],
+        "id": 18,
+        "isVertical": "true",
+        "text": "らに活動が拡がり活発になる基盤ができました。またプロジェクトの調査研究を目指す中で収集した",
+        "isTextline": "true",
+        "confidence": 0.952,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            93,
+            797
+          ],
+          [
+            93,
+            814
+          ],
+          [
+            918,
+            797
+          ],
+          [
+            918,
+            814
+          ]
+        ],
+        "id": 19,
+        "isVertical": "true",
+        "text": "貴重な史資料を整理し、移住資料館に寄贈して、あとに続く研究者の育成に貢献する活動もみられま",
+        "isTextline": "true",
+        "confidence": 0.954,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            95,
+            826
+          ],
+          [
+            95,
+            843
+          ],
+          [
+            919,
+            826
+          ],
+          [
+            919,
+            843
+          ]
+        ],
+        "id": 20,
+        "isVertical": "true",
+        "text": "した。これらの例からわかりますように、どのプロジェクトも、その成果をいろいろな形で社会に直",
+        "isTextline": "true",
+        "confidence": 0.947,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            92,
+            856
+          ],
+          [
+            92,
+            873
+          ],
+          [
+            919,
+            856
+          ],
+          [
+            919,
+            873
+          ]
+        ],
+        "id": 21,
+        "isVertical": "true",
+        "text": "接伝える役割を果たし、今後、海外移住資料館のアーカイプの充実に役立つことは確実です。今号の",
+        "isTextline": "true",
+        "confidence": 0.949,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            93,
+            885
+          ],
+          [
+            93,
+            902
+          ],
+          [
+            917,
+            885
+          ],
+          [
+            917,
+            902
+          ]
+        ],
+        "id": 22,
+        "isVertical": "true",
+        "text": "『研究紀要』には、上記プロジェクトの成果の一部が、論文や資料紹介として掲載されていますので、",
+        "isTextline": "true",
+        "confidence": 0.944,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            96,
+            914
+          ],
+          [
+            96,
+            931
+          ],
+          [
+            871,
+            914
+          ],
+          [
+            871,
+            931
+          ]
+        ],
+        "id": 23,
+        "isVertical": "true",
+        "text": "どうぞご覧ください。また、今年終了するプロジェクトの成果は次号にも掲載される予定です。",
+        "isTextline": "true",
+        "confidence": 0.951,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            92,
+            973
+          ],
+          [
+            92,
+            990
+          ],
+          [
+            919,
+            973
+          ],
+          [
+            919,
+            990
+          ]
+        ],
+        "id": 24,
+        "isVertical": "true",
+        "text": "加えて、調査研究の過程において海外・国内の関連諸機関と協力する例や、『研究紀要』に掲載され",
+        "isTextline": "true",
+        "confidence": 0.957,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            93,
+            1002
+          ],
+          [
+            93,
+            1019
+          ],
+          [
+            918,
+            1002
+          ],
+          [
+            918,
+            1019
+          ]
+        ],
+        "id": 25,
+        "isVertical": "true",
+        "text": "た成果がそれら諸機関との連携につながっていく例も、多々みられます。これも海外移住資料館の目",
+        "isTextline": "true",
+        "confidence": 0.954,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            92,
+            1032
+          ],
+          [
+            92,
+            1049
+          ],
+          [
+            917,
+            1032
+          ],
+          [
+            917,
+            1049
+          ]
+        ],
+        "id": 26,
+        "isVertical": "true",
+        "text": "的の一つであることを考えますと、喜ばしい発展です。今後も、このような連携がさらに広がり深まっ",
+        "isTextline": "true",
+        "confidence": 0.947,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            94,
+            1061
+          ],
+          [
+            94,
+            1078
+          ],
+          [
+            318,
+            1061
+          ],
+          [
+            318,
+            1078
+          ]
+        ],
+        "id": 27,
+        "isVertical": "true",
+        "text": "ていくことを願う次第です。",
+        "isTextline": "true",
+        "confidence": 0.949,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            95,
+            1120
+          ],
+          [
+            95,
+            1137
+          ],
+          [
+            919,
+            1120
+          ],
+          [
+            919,
+            1137
+          ]
+        ],
+        "id": 28,
+        "isVertical": "true",
+        "text": "この『研究紀要』が読者および関係者のみなさまのご支援を得てさらに成長し、これを通して、海外",
+        "isTextline": "true",
+        "confidence": 0.957,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            92,
+            1148
+          ],
+          [
+            92,
+            1166
+          ],
+          [
+            918,
+            1148
+          ],
+          [
+            918,
+            1166
+          ]
+        ],
+        "id": 29,
+        "isVertical": "true",
+        "text": "移住資料館の重要な活動の一端が、より多くの方に認識・理解していただけますよう、願っております。",
+        "isTextline": "true",
+        "confidence": 0.955,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            815,
+            1208
+          ],
+          [
+            815,
+            1226
+          ],
+          [
+            919,
+            1208
+          ],
+          [
+            919,
+            1226
+          ]
+        ],
+        "id": 30,
+        "isVertical": "true",
+        "text": "飯野正子",
+        "isTextline": "true",
+        "confidence": 0.943,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            644,
+            1237
+          ],
+          [
+            644,
+            1254
+          ],
+          [
+            919,
+            1237
+          ],
+          [
+            919,
+            1254
+          ]
+        ],
+        "id": 31,
+        "isVertical": "true",
+        "text": "海外移住資料館学術委員会委員長",
+        "isTextline": "true",
+        "confidence": 0.951,
+        "class_index": 1
+      },
+      {
+        "boundingBox": [
+          [
+            609,
+            1266
+          ],
+          [
+            609,
+            1284
+          ],
+          [
+            918,
+            1266
+          ],
+          [
+            918,
+            1284
+          ]
+        ],
+        "id": 32,
+        "isVertical": "true",
+        "text": "(津田塾大学理事・元学長・名誉教授)",
+        "isTextline": "true",
+        "confidence": 0.937,
+        "class_index": 1
+      }
+    ]
+  ],
+  "imginfo": {
+    "img_width": 1032,
+    "img_height": 1458,
+    "img_path": "C:\\sourceRead\\standalone-ocr-desk\\artifacts\\ocr\\work\\region-ocr\\raw_imported_972ed5fecb47\\page_0003\\full_page\\images\\region.png",
+    "img_name": "region.png"
+  },
+  "batch_ocr": {
+    "run_id": "run_ext_1781718371",
+    "source_id": "raw_imported_972ed5fecb47",
+    "page": 3,
+    "engine": "ndlocr_lite",
+    "status": "candidate",
+    "created_at": "2026-06-17T17:47:06.158006+00:00"
+  }
+}
