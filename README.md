@@ -76,3 +76,8 @@ If you want to use cloud-based vision models (Gemini, GPT-4o, Claude) for OCR:
    ANTHROPIC_API_KEY=your-anthropic-key
    ```
 3. Restart the backend server or start script.
+
+## Credits
+
+This application leverages [NDLOCR-Lite](https://github.com/ndl-lab/ndlocr-lite) developed by the National Diet Library (NDL) Lab for its local OCR engine capabilities.
+
