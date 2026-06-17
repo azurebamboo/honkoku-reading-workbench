@@ -12,6 +12,7 @@ __pycache__/
 *.py[cod]
 .venv/
 backend/.venv/
+tools/vendor/**/venv/
 
 # Frontend
 frontend/node_modules/
