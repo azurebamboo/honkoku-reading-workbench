@@ -1,0 +1,27 @@
+# Local archival originals (Don't commit large PDFs)
+sources/raw/*
+!sources/raw/.gitkeep
+
+# OCR working files
+artifacts/ocr/work/
+artifacts/ocr/**/images/
+artifacts/ocr/**/*.txt
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+backend/.venv/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Local config and OS/editor noise
+.env
+.env.*
+!.env.example
+.DS_Store
+*.swp
+*.swo

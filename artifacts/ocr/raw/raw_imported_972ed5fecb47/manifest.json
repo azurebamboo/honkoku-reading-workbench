@@ -1,0 +1,20 @@
+{
+  "source_id": "raw_imported_972ed5fecb47",
+  "source_path": "Imported PDFs/kiyo18_1_972ed5fecb47.pdf",
+  "checksum_sha256": "972ed5fecb47408a9334ea0d68509cd464c8921c2afb1cacfe7c705ce65dd77a",
+  "page_range": "7",
+  "pages": [
+    7
+  ],
+  "page_json": [
+    "artifacts/ocr/raw/raw_imported_972ed5fecb47/pages/page_0007.json"
+  ],
+  "ocr_engine": "ndlocr_lite",
+  "ocr_engine_path": "artifacts/ocr/raw",
+  "ocr_settings": {
+    "format": "page-json"
+  },
+  "status": "raw",
+  "created_at": "2026-06-17T17:47:43.692890+00:00",
+  "source_pdf": "sources/raw/Imported PDFs/kiyo18_1_972ed5fecb47.pdf"
+}
