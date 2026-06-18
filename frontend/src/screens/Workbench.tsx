@@ -2324,6 +2324,7 @@ function ReadingDesk({
   const [keywordResults, setKeywordResults] = useState([]);
   const [keywordSearching, setKeywordSearching] = useState(false);
   const [selectedHighlightText, setSelectedHighlightText] = useState("");
+  const [clickedHighlight, setClickedHighlight] = useState(null);
 
   useEffect(() => {
     if (!keywordQuery.trim()) {
@@ -2534,36 +2535,92 @@ function ReadingDesk({
     };
   }, [pageWrapRef, pageData?.source?.source_id, page]);
 
+  const getHighlightRanges = (val) => {
+    const ranges = [];
+    const regex = /==([\s\S]*?)==/g;
+    let match;
+    while ((match = regex.exec(val)) !== null) {
+      ranges.push({
+        start: match.index,
+        end: match.index + match[0].length,
+        text: match[1]
+      });
+    }
+    return ranges;
+  };
+
   // Handle selected text inside the textarea
   const handleTextareaSelect = (e) => {
     const start = e.target.selectionStart;
     const end = e.target.selectionEnd;
+    const val = e.target.value;
+    const ranges = getHighlightRanges(val);
+
     if (start !== end) {
-      setSelectedHighlightText(e.target.value.substring(start, end));
+      // Validate selection: must not partially overlap any highlight range
+      const isValid = ranges.every(r => {
+        if (end <= r.start || start >= r.end) return true; // Completely outside
+        if (start <= r.start && end >= r.end) return true; // Completely encloses
+        return false; // Partial overlap
+      });
+
+      if (!isValid) {
+        setSelectedHighlightText("");
+      } else {
+        setSelectedHighlightText(val.substring(start, end));
+      }
+      setClickedHighlight(null);
     } else {
       setSelectedHighlightText("");
+      // Check if clicked inside a highlight block
+      const clicked = ranges.find(r => start >= r.start && start <= r.end);
+      if (clicked) {
+        setClickedHighlight(clicked);
+      } else {
+        setClickedHighlight(null);
+      }
     }
   };
 
-  const handleSaveSelectionAsQuote = async () => {
+  const handleHighlightSelection = () => {
     if (!selectedHighlightText.trim()) return;
-    const result = await onSaveEvidence("quote", {
-      quote: selectedHighlightText.trim(),
-      confidence: "medium",
-      note: "",
-      evidenceId: "",
-      ocr_page_json: pageData?.ocr?.raw_page_json || "",
-      corrected_ocr_page_json: pageData?.ocr?.corrected_page_json || "",
-      region_ocr_json: regionOcrResult?.region_ocr_json || regionResult?.region_ocr_json || "",
-      region: regionResult?.region || activeRegion || {},
-      region_id: regionResult?.region_id || activeRegion?.region_id || "",
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    if (start === end) return;
+
+    const ranges = getHighlightRanges(text);
+    const isValid = ranges.every(r => {
+      if (end <= r.start || start >= r.end) return true;
+      if (start <= r.start && end >= r.end) return true;
+      return false;
     });
-    if (result && result.ok !== false) {
-      alert("Quote saved successfully!");
-      setSelectedHighlightText("");
-    } else {
-      alert("Failed to save quote: " + (result?.error || "Unknown error"));
-    }
+    if (!isValid) return;
+
+    const selected = text.substring(start, end);
+    // Strip nested highlights inside the selection
+    const cleanedSelected = selected.replace(/==/g, "");
+    const highlighted = `==${cleanedSelected}==`;
+    const newText = text.substring(0, start) + highlighted + text.substring(end);
+    onTextChange(newText);
+    pushToHistoryImmediately(newText);
+    setSelectedHighlightText("");
+
+    setTimeout(() => {
+      textarea.focus();
+      const newCursorPos = start + highlighted.length;
+      textarea.setSelectionRange(newCursorPos, newCursorPos);
+    }, 50);
+  };
+
+  const handleRemoveHighlight = () => {
+    if (!clickedHighlight) return;
+    const { start, end, text: inner } = clickedHighlight;
+    const newText = text.substring(0, start) + inner + text.substring(end);
+    onTextChange(newText);
+    pushToHistoryImmediately(newText);
+    setClickedHighlight(null);
   };
 
   const handleSearchReplace = (replaceAll = false) => {
@@ -2604,25 +2661,33 @@ function ReadingDesk({
   };
 
   const getHighlightedText = () => {
-    const escapedText = text
+    let escapedText = text
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;");
-    if (!searchTerm) return escapedText;
-    try {
-      if (useRegex) {
-        const flags = "g" + (caseSensitive ? "" : "i");
-        const regex = new RegExp(`(${searchTerm})`, flags);
-        return escapedText.replace(regex, "<mark>$1</mark>");
-      } else {
-        const escapedSearch = searchTerm.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-        const flags = "g" + (caseSensitive ? "" : "i");
-        const regex = new RegExp(`(${escapedSearch})`, flags);
-        return escapedText.replace(regex, "<mark>$1</mark>");
+
+    if (searchTerm) {
+      try {
+        if (useRegex) {
+          const flags = "g" + (caseSensitive ? "" : "i");
+          const regex = new RegExp(`(${searchTerm})`, flags);
+          escapedText = escapedText.replace(regex, "<mark>$1</mark>");
+        } else {
+          const escapedSearch = searchTerm.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+          const flags = "g" + (caseSensitive ? "" : "i");
+          const regex = new RegExp(`(${escapedSearch})`, flags);
+          escapedText = escapedText.replace(regex, "<mark>$1</mark>");
+        }
+      } catch (err) {
+        // ignore search highlight issues
       }
-    } catch (err) {
-      return escapedText;
     }
+
+    // Convert markdown highlights ==text== and HTML-like highlights <mark>text</mark> to real <mark> tags in backdrop
+    escapedText = escapedText.replace(/==([\s\S]*?)==/g, "<mark>$1</mark>");
+    escapedText = escapedText.replace(/&lt;mark&gt;([\s\S]*?)&lt;\/mark&gt;/g, "<mark>$1</mark>");
+
+    return escapedText;
   };
 
   const importPdf = async (e) => {
@@ -3252,13 +3317,19 @@ function ReadingDesk({
           </div>
 
           {selectedHighlightText && (
-            <button className="highlightQuoteButton" type="button" onClick={handleSaveSelectionAsQuote}>
-              <Quote size={15} /> Save selection as Quote
+            <button className="highlightQuoteButton" type="button" onClick={handleHighlightSelection}>
+              <Highlighter size={15} /> Highlight selection
+            </button>
+          )}
+
+          {clickedHighlight && !selectedHighlightText && (
+            <button className="highlightQuoteButton" type="button" onClick={handleRemoveHighlight} style={{ background: "#904738" }}>
+              <X size={15} /> Remove highlight
             </button>
           )}
 
           <label className="deskField" style={{ flex: 1 }}>
-            <span>Editable OCR text (Highlight text to save a quote)</span>
+            <span>Editable OCR text (Highlight text to format as a highlight)</span>
             <div className="ocrEditorContainer">
               <div 
                 ref={backdropRef}
