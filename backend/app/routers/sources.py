@@ -10,12 +10,13 @@ from backend.app.services.workbench import *
 router = APIRouter()
 
 @router.get("/api/v1/ocr/engines")
-def list_ocr_engines() -> list[dict[str, str]]:
+def list_ocr_engines() -> list[dict[str, Any]]:
     available = get_available_engines()
     return [
         {
             "engine_id": engine_id,
-            "label": engine.label
+            "label": engine.label,
+            "options_schema": engine.options_schema
         }
         for engine_id, engine in available.items()
     ]

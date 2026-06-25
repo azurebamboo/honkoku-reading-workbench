@@ -1972,3 +1972,26 @@ dd {
   }
 }
 
+.ocrBoundingBox {
+  position: absolute;
+  border: 1px dashed rgba(24, 144, 255, 0.45);
+  background: rgba(24, 144, 255, 0.04);
+  pointer-events: auto;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: all 120ms ease-in-out;
+}
+
+.ocrBoundingBox.hovered {
+  border: 1.5px solid rgba(24, 144, 255, 0.85);
+  background: rgba(24, 144, 255, 0.16);
+  z-index: 10;
+}
+
+.ocrBoundingBox.active {
+  border: 2px solid #e19d3c;
+  background: rgba(225, 157, 60, 0.16);
+  z-index: 11;
+  box-shadow: 0 0 4px rgba(225, 157, 60, 0.5);
+}
+
