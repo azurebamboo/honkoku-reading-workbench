@@ -173,7 +173,9 @@ load_env()
 def get_available_engines() -> dict[str, Any]:
     from backend.app.core.providers import (
         NDLOCREngine,
-        VisionLLMOCREngine
+        VisionLLMOCREngine,
+        MineruOCREngine,
+        PaddleOCREngine
     )
     engines = {
         "ndlocr_lite": NDLOCREngine()
@@ -194,6 +196,18 @@ def get_available_engines() -> dict[str, Any]:
         model = os.getenv("ANTHROPIC_MODEL")
         engines["vision_llm_anthropic"] = VisionLLMOCREngine("anthropic", anthropic_key, model)
         
+    mineru_key = os.getenv("MINERU_API_KEY")
+    if mineru_key:
+        model = os.getenv("MINERU_MODEL") or "vlm"
+        api_url = os.getenv("MINERU_API_URL") or "https://mineru.net"
+        engines["mineru"] = MineruOCREngine(mineru_key, api_url, model)
+
+    paddleocr_key = os.getenv("PADDLEOCR_API_KEY")
+    if paddleocr_key:
+        paddleocr_url = os.getenv("PADDLEOCR_API_URL") or "https://paddleocr.aistudio-app.com/api/v2/ocr/jobs"
+        paddleocr_model = os.getenv("PADDLEOCR_MODEL") or "PaddleOCR-VL-1.6"
+        engines["paddleocr"] = PaddleOCREngine(paddleocr_key, paddleocr_url, paddleocr_model)
+
     return engines
 
 
@@ -2453,13 +2467,16 @@ def write_temporary_text_ocr_records(
     return records
 
 
-async def run_batch_ocr_page(run_id: str, source: dict[str, Any], page: int, engine_id: str) -> dict[str, Any]:
+async def run_batch_ocr_page(run_id: str, source: dict[str, Any], page: int, engine_id: str, extra_settings: dict[str, Any] | None = None) -> dict[str, Any]:
     engines = get_available_engines()
     if engine_id not in engines:
         raise HTTPException(status_code=400, detail=f"OCR engine is not available: {engine_id}")
     page_image = render_pdf_page_image(source, page)
     try:
-        result = await engines[engine_id].run_ocr(page_image, {"source_id": source["source_id"], "page": page, "region_id": "full_page"})
+        ocr_settings = {"source_id": source["source_id"], "page": page, "region_id": "full_page"}
+        if extra_settings:
+            ocr_settings.update(extra_settings)
+        result = await engines[engine_id].run_ocr(page_image, ocr_settings)
     except Exception as exc:
         return {
             "ocr_layer": "batch",
@@ -2959,14 +2976,10 @@ def sync_batch_ocr_to_project(source_id: str) -> None:
         except Exception:
             return
             
-        registered_pages: set[int] = set()
-        for layer in ("manual", "raw"):
-            manifest_info = ocr_manifest_for_layer(source_id, layer)
-            if manifest_info:
-                manifest, _ = manifest_info
-                registered_pages.update(int(p) for p in manifest.get("pages", []) if isinstance(p, (int, str)))
-
-        run_dirs = sorted(batch_dir.glob("run_ext_*"))
+        run_dirs = sorted(
+            [d for d in batch_dir.iterdir() if d.is_dir() and (d.name.startswith("run_ext_") or d.name.startswith("bio_"))],
+            key=lambda d: d.name
+        )
         if not run_dirs:
             return
 
@@ -2990,11 +3003,18 @@ def sync_batch_ocr_to_project(source_id: str) -> None:
                     continue
                 page = int(match.group(1))
                 
-                if page not in registered_pages:
+                raw_page_path = get_ocr_raw_dir() / source_id / "pages" / f"page_{page:04d}.json"
+                should_sync = not raw_page_path.exists()
+                if not should_sync:
+                    try:
+                        should_sync = ocr_file.stat().st_mtime > raw_page_path.stat().st_mtime
+                    except Exception:
+                        pass
+                
+                if should_sync:
                     try:
                         page_json = load_json(ocr_file)
                         register_raw_ocr_for_page(source, page, page_json, engine)
-                        registered_pages.add(page)
                     except Exception as e:
                         print(f"Error auto-syncing page {page} from run {run_dir.name}: {e}")
     except Exception as e:
@@ -3086,7 +3106,8 @@ async def run_batch_nlp_extraction(
     entity_labels: list[str],
     relation_labels: list[str],
     slm_prompt: str,
-    llm_prompt: str
+    llm_prompt: str,
+    ocr_settings: dict[str, Any] | None = None
 ):
     source = source_by_id(source_id)
     pages = biography_source_pages(source)
@@ -3178,14 +3199,15 @@ async def run_batch_nlp_extraction(
     total_pages = len(pages)
     for idx, page in enumerate(pages, 1):
         ocr = best_ocr_for_page(source_id, page)
-        if ocr.get("ocr_status") == "missing" or ocr.get("ocr_layer") == "none":
+        should_run_ocr = (ocr_engine != "none" and ocr.get("ocr_layer") != "corrected") or (ocr.get("ocr_status") == "missing" or ocr.get("ocr_layer") == "none")
+        if should_run_ocr:
             if ocr_engine == "none":
                 create_blank_batch_packet(run_id, source, page, ocr)
                 continue
             manifest["status"] = f"Running OCR on page {page} ({idx}/{total_pages})..."
             write_json(batch_run_path(run_id), manifest)
             try:
-                ocr = await run_batch_ocr_page(run_id, source, page, ocr_engine)
+                ocr = await run_batch_ocr_page(run_id, source, page, ocr_engine, ocr_settings)
             except Exception:
                 continue
                 

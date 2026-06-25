@@ -58,6 +58,15 @@ async def create_batch_biography_run_from_payload(payload: dict[str, Any]) -> di
     if not selected_sources:
         raise HTTPException(status_code=404, detail="No biography sources found")
 
+    # Dynamic OCR settings: copy everything that is not a core batch/nlp configuration parameter
+    exclude_keys = {
+        "source_id", "all_sources", "run_ocr", "ocr_engine", "max_pages",
+        "page_scope", "analysis_mode", "analysis_engine", "worker_skill_id",
+        "source_skill_id", "max_quote_candidates", "temporary_ocr_text_path",
+        "ocr_text_path", "run_id"
+    }
+    ocr_settings = {k: v for k, v in payload.items() if k not in exclude_keys}
+
     seed = json.dumps(
         {
             "source_ids": [source["source_id"] for source in selected_sources],
@@ -121,8 +130,9 @@ async def create_batch_biography_run_from_payload(payload: dict[str, Any]) -> di
             if page in ocr_by_page:
                 continue
             existing_ocr = best_ocr_for_page(source["source_id"], page)
-            if existing_ocr["ocr_status"] == "missing" and run_ocr:
-                existing_ocr = await run_batch_ocr_page(run_id, source, page, engine_id)
+            should_run_ocr = run_ocr and (existing_ocr["ocr_status"] == "missing" or existing_ocr.get("ocr_layer") != "corrected")
+            if should_run_ocr:
+                existing_ocr = await run_batch_ocr_page(run_id, source, page, engine_id, ocr_settings)
             ocr_by_page[page] = existing_ocr
         repeated_texts = repeated_ocr_texts_from_records(list(ocr_by_page.values()))
         lexicon = network_entity_lexicon()
@@ -505,6 +515,12 @@ async def batch_extract(request: Request, background_tasks: BackgroundTasks) -> 
     source_by_id(source_id)
     run_id = f"run_ext_{int(datetime.now(timezone.utc).timestamp())}"
     
+    exclude_keys = {
+        "source_id", "ocr_engine", "nlp_method", "entity_labels", 
+        "relation_labels", "slm_prompt", "llm_prompt"
+    }
+    ocr_settings = {k: v for k, v in payload.items() if k not in exclude_keys}
+    
     # Start background task
     background_tasks.add_task(
         run_batch_nlp_extraction,
@@ -515,7 +531,8 @@ async def batch_extract(request: Request, background_tasks: BackgroundTasks) -> 
         entity_labels,
         relation_labels,
         slm_prompt,
-        llm_prompt
+        llm_prompt,
+        ocr_settings
     )
     
     return {

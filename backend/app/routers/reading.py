@@ -129,6 +129,7 @@ async def ocr_reading_full_page(source_id: str, page: int, request: Request) -> 
                 "source_id": source_id,
                 "page": page,
                 "region_id": "full_page",
+                **payload
             },
         )
         page_json = ocr_result.get("page_json") or {}
@@ -227,6 +228,7 @@ async def ocr_reading_region(source_id: str, page: int, request: Request) -> dic
                 "source_id": source_id,
                 "page": page,
                 "region_id": region_id,
+                **payload
             }
         )
         page_json = ocr_result["page_json"]
@@ -810,6 +812,7 @@ def reading_page(source_id: str, page: int) -> dict[str, Any]:
     manifest_path_text = ""
     raw_page_json_path = None
     raw_text = ""
+    raw_page_json = {}
     if preferred is not None:
         ocr_layer, manifest, manifest_path = preferred
         raw_page_json_path = page_json_path_for(manifest, page)
@@ -818,14 +821,71 @@ def reading_page(source_id: str, page: int) -> dict[str, Any]:
             raw_page_json = load_json(resolve_project_relative_path(raw_page_json_path))
             raw_text = flatten_ocr_text(raw_page_json)
 
+    if not raw_page_json_path or not raw_text.strip():
+        pass
+
+    fallback_path = get_ocr_regions_dir() / source_id / "pages" / f"page_{page:04d}" / "full_page.json"
+    if fallback_path.exists():
+        try:
+            fallback_json = load_json(fallback_path)
+            fallback_text = flatten_ocr_text(fallback_json)
+            if fallback_text.strip():
+                fallback_has_boxes = False
+                for block in fallback_json.get("contents", []):
+                    if isinstance(block, dict) and "boundingBox" in block:
+                        fallback_has_boxes = True
+                        break
+                    elif isinstance(block, list):
+                        for item in block:
+                            if isinstance(item, dict) and "boundingBox" in item:
+                                fallback_has_boxes = True
+                                break
+                        if fallback_has_boxes:
+                            break
+                
+                raw_has_boxes = False
+                if raw_page_json:
+                    for block in raw_page_json.get("contents", []):
+                        if isinstance(block, dict) and "boundingBox" in block:
+                            raw_has_boxes = True
+                            break
+                        elif isinstance(block, list):
+                            for item in block:
+                                if isinstance(item, dict) and "boundingBox" in item:
+                                    raw_has_boxes = True
+                                    break
+                            if raw_has_boxes:
+                                break
+
+                manifest_mtime = 0
+                if raw_page_json_path:
+                    manifest_resolved = resolve_project_relative_path(raw_page_json_path)
+                    if manifest_resolved.exists():
+                        manifest_mtime = manifest_resolved.stat().st_mtime
+                fallback_mtime = fallback_path.stat().st_mtime
+
+                if (not raw_page_json_path or 
+                    not raw_text.strip() or 
+                    (fallback_has_boxes and not raw_has_boxes) or 
+                    fallback_mtime > manifest_mtime):
+                    
+                    raw_page_json = fallback_json
+                    raw_page_json_path = fallback_path.relative_to(wb.ROOT).as_posix()
+                    raw_text = fallback_text
+                    ocr_layer = "regions_fallback"
+        except Exception as e:
+            print(f"Error loading regions fallback OCR: {e}")
+
     corrected_text = ""
     corrected_page_json_path = None
+    corrected_page_json = {}
     corrected_info = corrected_ocr_manifest(source_id)
     if corrected_info:
         corrected_manifest = corrected_info[0]
         corrected_page_json_path = page_json_path_for(corrected_manifest, page)
         if corrected_page_json_path:
-            corrected_text = flatten_ocr_text(load_json(resolve_project_relative_path(corrected_page_json_path)))
+            corrected_page_json = load_json(resolve_project_relative_path(corrected_page_json_path))
+            corrected_text = flatten_ocr_text(corrected_page_json)
 
     artifact = reading_extraction_artifact(source_id)
     effective_text = corrected_text or raw_text
@@ -859,6 +919,8 @@ def reading_page(source_id: str, page: int) -> dict[str, Any]:
             "corrected_text": corrected_text,
             "effective_text": effective_text,
             "status": "corrected" if corrected_text else "raw",
+            "raw_page_json_data": raw_page_json or None,
+            "corrected_page_json_data": corrected_page_json or None,
         },
         "artifact_status": artifact.get("provenance", {}).get("status", "draft"),
         "entities": artifact.get("entity_records", []),
@@ -896,18 +958,46 @@ async def save_ocr_review(source_id: str, page: int, request: Request) -> dict[s
 
     corrected_page_path = get_ocr_corrected_dir() / source_id / "pages" / f"page_{page:04d}.json"
     lines = [line.strip() for line in text.splitlines()]
+    
+    raw_lines = []
+    for block in raw_page_json.get("contents", []):
+        if isinstance(block, dict):
+            text_val = block.get("text")
+            if isinstance(text_val, str):
+                raw_lines.append(block)
+            continue
+        if isinstance(block, list):
+            for item in block:
+                if isinstance(item, dict):
+                    text_val = item.get("text")
+                    if isinstance(text_val, str):
+                        raw_lines.append(item)
+
+    contents_list = []
+    raw_index = 0
+    for index, line in enumerate(lines):
+        line_dict = {
+            "id": index,
+            "text": line,
+            "isTextline": "true",
+            "isCorrectedOcr": "true",
+        }
+        if line.strip():
+            if raw_index < len(raw_lines):
+                orig = raw_lines[raw_index]
+                if "boundingBox" in orig:
+                    line_dict["boundingBox"] = orig["boundingBox"]
+                if "isVertical" in orig:
+                    line_dict["isVertical"] = orig["isVertical"]
+                if "class_index" in orig:
+                    line_dict["class_index"] = orig["class_index"]
+                if "confidence" in orig:
+                    line_dict["confidence"] = orig["confidence"]
+                raw_index += 1
+        contents_list.append(line_dict)
+
     corrected_page_json = {
-        "contents": [
-            [
-                {
-                    "id": index,
-                    "text": line,
-                    "isTextline": "true",
-                    "isCorrectedOcr": "true",
-                }
-                for index, line in enumerate(lines)
-            ]
-        ],
+        "contents": [contents_list],
         "imginfo": raw_page_json.get("imginfo", {}),
         "corrected_ocr": {
             "page": page,
@@ -919,6 +1009,8 @@ async def save_ocr_review(source_id: str, page: int, request: Request) -> dict[s
             "text_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
         },
     }
+    if "region_ocr" in raw_page_json:
+        corrected_page_json["region_ocr"] = raw_page_json["region_ocr"]
     write_json(corrected_page_path, corrected_page_json)
 
     manifest_path = get_ocr_corrected_dir() / source_id / "manifest.json"

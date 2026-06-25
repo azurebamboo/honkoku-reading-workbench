@@ -34,6 +34,8 @@ import {
   Undo,
   Redo,
   FileText,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { API_BASE, fetchJson } from "../api/client";
 import "../styles.css";
@@ -1251,6 +1253,7 @@ function Workbench() {
             selectedRunId={selectedBatchRunId}
             pages={batchPages}
             selectedPage={selectedBatchPage}
+            ocrEngines={ocrEngines}
             message={batchMessage}
             onRunChange={(runId) => {
               setSelectedBatchRunId(runId);
@@ -1639,11 +1642,147 @@ function Workbench() {
   );
 }
 
+interface EngineOption {
+  name: string;
+  label: string;
+  type: "select" | "boolean";
+  default: any;
+  choices?: { value: string; label: string }[];
+}
+
+interface OcrEngine {
+  engine_id: string;
+  label: string;
+  options_schema?: EngineOption[];
+}
+
+interface DynamicEngineSettingsProps {
+  engineId: string;
+  engines: OcrEngine[];
+  settings: Record<string, any>;
+  onChange: (key: string, value: any) => void;
+  layout?: "vertical" | "horizontal";
+}
+
+function DynamicEngineSettings({
+  engineId,
+  engines,
+  settings,
+  onChange,
+  layout = "horizontal",
+}: DynamicEngineSettingsProps) {
+  const engine = (engines || []).find((e) => e.engine_id === engineId);
+  if (!engine || !engine.options_schema || engine.options_schema.length === 0) {
+    return null;
+  }
+
+  const containerStyle: React.CSSProperties =
+    layout === "vertical"
+      ? {
+          display: "flex",
+          flexDirection: "column",
+          gap: "8px",
+          padding: "10px",
+          backgroundColor: "var(--bg-light, #f7f5f0)",
+          border: "1px solid var(--border-color, #e1dacd)",
+          borderRadius: "4px",
+          fontSize: "12px",
+          width: "100%",
+          boxSizing: "border-box",
+        }
+      : {
+          display: "flex",
+          alignItems: "center",
+          gap: "12px",
+          padding: "8px 16px",
+          backgroundColor: "var(--bg-light, #f7f5f0)",
+          borderBottom: "1px solid var(--border-color, #e1dacd)",
+          fontSize: "12px",
+          width: "100%",
+          boxSizing: "border-box",
+        };
+
+  return (
+    <div style={containerStyle}>
+      <div style={{ fontWeight: "bold" }}>
+        {engine.label} Options{layout === "horizontal" ? ":" : ""}
+      </div>
+      <div
+        style={{
+          display: "flex",
+          gap: "10px",
+          flexWrap: "wrap",
+          alignItems: "center",
+        }}
+      >
+        {engine.options_schema.map((opt) => {
+          const val = settings[opt.name] !== undefined ? settings[opt.name] : opt.default;
+          if (opt.type === "select") {
+            return (
+              <label
+                key={opt.name}
+                style={{
+                  display: "flex",
+                  flexDirection: layout === "vertical" ? "column" : "row",
+                  alignItems: layout === "vertical" ? "flex-start" : "center",
+                  gap: "2px",
+                }}
+              >
+                <span style={layout === "vertical" ? { fontSize: "11px", color: "#666" } : undefined}>
+                  {opt.label}
+                </span>
+                <select
+                  value={val}
+                  onChange={(e) => onChange(opt.name, e.target.value)}
+                  style={{
+                    padding: "2px",
+                    borderRadius: "3px",
+                    border: "1px solid var(--border-color, #e1dacd)",
+                  }}
+                >
+                  {opt.choices?.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            );
+          } else if (opt.type === "boolean") {
+            return (
+              <label
+                key={opt.name}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  cursor: "pointer",
+                  height: layout === "vertical" ? "24px" : "auto",
+                  alignSelf: layout === "vertical" ? "flex-end" : "auto",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={!!val}
+                  onChange={(e) => onChange(opt.name, e.target.checked)}
+                />
+                <span>{opt.label}</span>
+              </label>
+            );
+          }
+          return null;
+        })}
+      </div>
+    </div>
+  );
+}
+
 function BatchReview({
   runs,
   selectedRunId,
   pages,
   selectedPage,
+  ocrEngines,
   message,
   onRunChange,
   onCreateRun,
@@ -1664,6 +1803,7 @@ function BatchReview({
   // Redesign: Local state for Left Panel configuration placeholders
   const [selectedSourceId, setSelectedSourceId] = useState("");
   const [selectedOcrMethod, setSelectedOcrMethod] = useState("ndlocr_lite");
+  const [ocrSettings, setOcrSettings] = useState<Record<string, any>>({});
   const [selectedNlpMethod, setSelectedNlpMethod] = useState("gliner");
   const [glinerLabels, setGlinerLabels] = useState("person, place, organization, group, event, document");
   const [glinerRelations, setGlinerRelations] = useState("spouse, parent, child, colleague, employer, opponent, ally");
@@ -1893,14 +2033,25 @@ function BatchReview({
             <span>OCR Method</span>
             <select value={selectedOcrMethod} onChange={(e) => setSelectedOcrMethod(e.target.value)}>
               <option value="none">None (Skip OCR / Use existing OCR)</option>
-              <option value="ndlocr_lite">NDLOCR-Lite (Local)</option>
-              <option value="vision_llm_gemini">Google Gemini API</option>
-              <option value="vision_llm_openai">OpenAI GPT-4o</option>
-              <option value="vision_llm_anthropic">Anthropic Claude API</option>
+              {(ocrEngines || []).map((eng) => {
+                const engineId = typeof eng === "string" ? eng : (eng?.engine_id || "");
+                const label = typeof eng === "string" ? eng : (eng?.label || engineId);
+                return (
+                  <option key={engineId} value={engineId}>
+                    {label}
+                  </option>
+                );
+              })}
             </select>
           </label>
 
-
+          <DynamicEngineSettings
+            engineId={selectedOcrMethod}
+            engines={ocrEngines}
+            settings={ocrSettings}
+            onChange={(name, val) => setOcrSettings((prev) => ({ ...prev, [name]: val }))}
+            layout="vertical"
+          />
 
           <button
             className="primaryButton"
@@ -1908,12 +2059,21 @@ function BatchReview({
             onClick={async () => {
               try {
                 setRunProgress("Starting batch OCR background task...");
+                const activeEngine = ocrEngines.find((e) => e.engine_id === selectedOcrMethod);
+                const engineSettings: Record<string, any> = {};
+                if (activeEngine?.options_schema) {
+                  activeEngine.options_schema.forEach((opt) => {
+                    const val = ocrSettings[opt.name] !== undefined ? ocrSettings[opt.name] : opt.default;
+                    engineSettings[opt.name] = val;
+                  });
+                }
                 const res = await fetchJson("/api/batch/extract", {
                   method: "POST",
                   body: JSON.stringify({
                     source_id: selectedSourceId,
                     ocr_engine: selectedOcrMethod,
                     nlp_method: "none",
+                    ...engineSettings,
                   }),
                 });
                 setRunProgress(`Task started: ${res.message || res.run_id}`);
@@ -2004,40 +2164,54 @@ function BatchReview({
           </label>
 
           {selectedRun && (
-            <>
-              <dl className="compactMeta tight" style={{ marginBottom: "12px" }}>
-                <div><dt>Status</dt><dd>{selectedRun.status}</dd></div>
-                <div><dt>Relevant pages</dt><dd>{batchRunRelevantCount(selectedRun)} of {selectedRun.counts?.pages || 0}</dd></div>
-                <div><dt>Suggested quotes</dt><dd>{selectedRun.counts?.quote_candidates || 0}</dd></div>
-                <div><dt>Approved</dt><dd>{selectedRun.counts?.approved_candidates || 0}</dd></div>
-              </dl>
-              {(() => {
-                const pct = getStatusPercent(selectedRun.status);
-                if (pct >= 0 && selectedRun.status) {
-                  return (
-                    <div style={{ marginBottom: 12, marginTop: -6 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4 }}>
-                        <span>Progress</span>
-                        <span>{pct}%</span>
-                      </div>
-                      <div className="progressBarContainer" style={{ background: "var(--border-color, #e1dacd)", borderRadius: 4, height: 8, width: "100%", overflow: "hidden" }}>
-                        <div className="progressBarFill" style={{ background: "var(--accent-primary, #7d3d2f)", width: `${pct}%`, height: "100%", transition: "width 0.3s ease" }} />
-                      </div>
-                    </div>
-                  );
-                }
-                return null;
-              })()}
-              <details className="runDetails">
-                <summary>Run details</summary>
-                <dl className="compactMeta tight">
-                  <div><dt>Run ID</dt><dd>{selectedRun.run_id}</dd></div>
-                  <div><dt>Created</dt><dd>{selectedRun.created_at || "unknown"}</dd></div>
-                  <div><dt>Updated</dt><dd>{selectedRun.updated_at || "unknown"}</dd></div>
-                  <div><dt>OCR engine</dt><dd>{selectedRun.ocr_engine || "unknown"}</dd></div>
-                </dl>
-              </details>
-            </>
+            <div style={{
+              padding: "14px",
+              background: "var(--bg-surface-elevated, #fcfbf9)",
+              border: "1px solid var(--border-color, #e1dacd)",
+              borderRadius: "8px",
+              marginBottom: "16px",
+              marginTop: "8px",
+              boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)",
+              transition: "all 0.2s ease"
+            }}>
+              <div style={{ 
+                display: "flex", 
+                justifyContent: "space-between", 
+                alignItems: "center",
+                fontSize: "12px", 
+                fontWeight: 600, 
+                color: "var(--text-primary)"
+              }}>
+                <span>Run Status</span>
+                <span>{getStatusPercent(selectedRun.status)}%</span>
+              </div>
+              <div 
+                className={selectedRun.status?.toLowerCase().includes("failed") || selectedRun.status?.toLowerCase().includes("error") ? "statusBadge error" : "muted"}
+                style={{ 
+                  fontSize: "11px", 
+                  marginTop: "6px", 
+                  fontStyle: "italic",
+                  lineHeight: "1.4",
+                  wordBreak: "break-word",
+                  display: "inline-block",
+                  padding: selectedRun.status?.toLowerCase().includes("failed") || selectedRun.status?.toLowerCase().includes("error") ? "4px 8px" : "0",
+                  borderRadius: "4px"
+                }}
+              >
+                {selectedRun.status}
+              </div>
+              <div className="progressBarContainer" style={{ background: "var(--border-color-light, #f5f5f5)", borderRadius: 4, height: 6, width: "100%", overflow: "hidden", marginTop: 10 }}>
+                <div 
+                  className="progressBarFill" 
+                  style={{ 
+                    background: selectedRun.status?.toLowerCase().includes("failed") || selectedRun.status?.toLowerCase().includes("error") ? "#d93838" : "var(--accent-primary, #7d3d2f)", 
+                    width: `${getStatusPercent(selectedRun.status)}%`, 
+                    height: "100%", 
+                    transition: "width 0.3s ease" 
+                  }} 
+                />
+              </div>
+            </div>
           )}
 
           <div className="inlineFields" style={{ marginTop: "12px" }}>
@@ -2100,6 +2274,19 @@ function BatchReview({
                 </button>
                 <button className="quietButton light" type="button" onClick={() => onPromote(draftPage.run_id, draftPage.source_id, draftPage.page, draftPage)}>
                   Promote approved page items
+                </button>
+                <button 
+                  className="quietButton light" 
+                  type="button" 
+                  onClick={() => onSyncOcr(draftPage.run_id, draftPage.source_id, draftPage.page)}
+                  style={{
+                    border: draftPage.ocr_is_stale ? "1px solid var(--accent-primary, #7d3d2f)" : "",
+                    background: draftPage.ocr_is_stale ? "var(--bg-surface-elevated, #fcfbf9)" : "",
+                    color: draftPage.ocr_is_stale ? "var(--accent-primary, #7d3d2f)" : ""
+                  }}
+                  title="Synchronize and parse this page again using the latest proofread OCR from the Reading Desk"
+                >
+                  {draftPage.ocr_is_stale ? "Sync OCR (Update Available)" : "Sync OCR"}
                 </button>
               </div>
               <label className="inlineCheck" style={{ margin: 0 }}>
@@ -2326,6 +2513,10 @@ function ReadingDesk({
   const [selectedHighlightText, setSelectedHighlightText] = useState("");
   const [clickedHighlight, setClickedHighlight] = useState(null);
 
+  const [showBoundingBoxes, setShowBoundingBoxes] = useState(true);
+  const [activeLineIndex, setActiveLineIndex] = useState(-1);
+  const [hoveredLineIndex, setHoveredLineIndex] = useState(-1);
+
   useEffect(() => {
     if (!keywordQuery.trim()) {
       setKeywordResults([]);
@@ -2353,6 +2544,7 @@ function ReadingDesk({
   // Restored OCR & region states
   const [parsingEngine, setParsingEngine] = useState("ndlocr_lite");
   const [customParsingEngine, setCustomParsingEngine] = useState("");
+  const [ocrSettings, setOcrSettings] = useState<Record<string, any>>({});
   const [ocrInsertMode, setOcrInsertMode] = useState("append");
   const [region, setRegion] = useState(null);
   const [regionDrag, setRegionDrag] = useState(null);
@@ -2379,6 +2571,8 @@ function ReadingDesk({
     setRegionResult(null);
     setRegionOcrResult(null);
     setTableMessage("");
+    setActiveLineIndex(-1);
+    setHoveredLineIndex(-1);
   }, [pageData?.source?.source_id, page]);
 
   // Initialize/reset history when text changes due to page change
@@ -2555,6 +2749,39 @@ function ReadingDesk({
     const end = e.target.selectionEnd;
     const val = e.target.value;
     const ranges = getHighlightRanges(val);
+
+    const textBeforeCursor = val.substring(0, start);
+    const linesBefore = textBeforeCursor.split("\n");
+    const lineIndex = linesBefore.length - 1;
+
+    // Calculate which ocrBlock corresponds to lineIndex in textarea
+    const lines = val.split("\n");
+    if (lineIndex >= 0 && lineIndex < lines.length && lines[lineIndex].trim() !== "") {
+      // Count how many non-empty lines are before lineIndex
+      let nonEmptyLineCount = 0;
+      for (let i = 0; i < lineIndex; i++) {
+        if (lines[i].trim() !== "") {
+          nonEmptyLineCount++;
+        }
+      }
+
+      // Find the nonEmptyLineCount-th non-empty block in ocrBlocks
+      let blockIdx = -1;
+      let nonEmptyBlockCount = 0;
+      for (let i = 0; i < ocrBlocks.length; i++) {
+        const block = ocrBlocks[i];
+        if (block && block.text && block.text.trim() !== "") {
+          if (nonEmptyBlockCount === nonEmptyLineCount) {
+            blockIdx = i;
+            break;
+          }
+          nonEmptyBlockCount++;
+        }
+      }
+      setActiveLineIndex(blockIdx);
+    } else {
+      setActiveLineIndex(-1);
+    }
 
     if (start !== end) {
       // Validate selection: must not partially overlap any highlight range
@@ -2747,6 +2974,148 @@ function ReadingDesk({
 
   const activeRegion = regionDrag ? regionFromDrag(regionDrag.start, regionDrag.current) : region;
 
+  const ocrDataSource = useMemo(() => {
+    if (!pageData?.ocr) return null;
+    const corrData = pageData.ocr.corrected_page_json_data;
+    const rawData = pageData.ocr.raw_page_json_data;
+
+    const corrBlocks = corrData?.contents ? corrData.contents.flatMap(b => Array.isArray(b) ? b : [b]) : [];
+    const hasCorrBoxes = corrData?.imginfo?.img_width && corrBlocks.some(block => block && block.boundingBox && Array.isArray(block.boundingBox) && block.boundingBox.length >= 4);
+
+    if (hasCorrBoxes) {
+      return corrData;
+    }
+    if (rawData?.imginfo?.img_width) {
+      return rawData;
+    }
+    return null;
+  }, [pageData]);
+
+  const ocrBlocks = useMemo(() => {
+    const ocrData = ocrDataSource;
+    if (!ocrData || !ocrData.contents) return [];
+
+    const blocks = [];
+    for (const block of ocrData.contents) {
+      if (Array.isArray(block)) {
+        for (const item of block) {
+          if (item && typeof item === "object") {
+            blocks.push(item);
+          }
+        }
+      } else if (block && typeof block === "object") {
+        blocks.push(block);
+      }
+    }
+    return blocks;
+  }, [ocrDataSource]);
+
+  const hasBoundingBoxes = useMemo(() => {
+    return ocrBlocks.some(block => block.boundingBox && Array.isArray(block.boundingBox) && block.boundingBox.length >= 4);
+  }, [ocrBlocks]);
+
+  const regionCoords = useMemo(() => {
+    const ocrData = ocrDataSource;
+    if (ocrData && ocrData.region_ocr && ocrData.region_ocr.region) {
+      return ocrData.region_ocr.region;
+    }
+    return null;
+  }, [ocrDataSource]);
+
+  const getBoundingBoxStyle = (block) => {
+    const ocrData = ocrDataSource;
+    if (!ocrData || !ocrData.imginfo) return null;
+
+    const imgWidth = ocrData.imginfo.img_width;
+    const imgHeight = ocrData.imginfo.img_height;
+    if (!imgWidth || !imgHeight) return null;
+
+    const box = block.boundingBox;
+    if (!box || !Array.isArray(box) || box.length < 4) return null;
+
+    const xs = box.map(p => p[0]);
+    const ys = box.map(p => p[1]);
+    const xMin = Math.min(...xs);
+    const xMax = Math.max(...xs);
+    const yMin = Math.min(...ys);
+    const yMax = Math.max(...ys);
+
+    let leftRel = xMin / imgWidth;
+    let topRel = yMin / imgHeight;
+    let widthRel = (xMax - xMin) / imgWidth;
+    let heightRel = (yMax - yMin) / imgHeight;
+
+    if (regionCoords) {
+      const rx = regionCoords.x || 0;
+      const ry = regionCoords.y || 0;
+      const rw = regionCoords.width || 1;
+      const rh = regionCoords.height || 1;
+
+      leftRel = rx + leftRel * rw;
+      topRel = ry + topRel * rh;
+      widthRel = widthRel * rw;
+      heightRel = heightRel * rh;
+    }
+
+    return {
+      left: `${leftRel * 100}%`,
+      top: `${topRel * 100}%`,
+      width: `${widthRel * 100}%`,
+      height: `${heightRel * 100}%`
+    };
+  };
+
+  const handleBoundingBoxClick = (idx) => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const lines = text.split("\n");
+
+    // Find how many non-empty blocks in ocrBlocks are before idx
+    let nonEmptyBlockCount = 0;
+    for (let i = 0; i < idx; i++) {
+      const block = ocrBlocks[i];
+      if (block && block.text && block.text.trim() !== "") {
+        nonEmptyBlockCount++;
+      }
+    }
+
+    // Find the nonEmptyBlockCount-th non-empty line in textarea lines
+    let textareaLineIdx = -1;
+    let nonEmptyLineCount = 0;
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].trim() !== "") {
+        if (nonEmptyLineCount === nonEmptyBlockCount) {
+          textareaLineIdx = i;
+          break;
+        }
+        nonEmptyLineCount++;
+      }
+    }
+
+    if (textareaLineIdx === -1) {
+      // Fallback: if we can't align via non-empty lines, just use idx if it's within range
+      if (idx < lines.length) {
+        textareaLineIdx = idx;
+      } else {
+        return;
+      }
+    }
+
+    let startOffset = 0;
+    for (let i = 0; i < textareaLineIdx; i++) {
+      startOffset += lines[i].length + 1;
+    }
+    const endOffset = startOffset + lines[textareaLineIdx].length;
+
+    textarea.focus();
+    textarea.setSelectionRange(startOffset, endOffset);
+    setActiveLineIndex(idx);
+
+    const lineHeight = 20; 
+    textarea.scrollTop = Math.max(0, textareaLineIdx * lineHeight - 100);
+  };
+
   function regionPointFromEvent(event) {
     const frame = imageFrameRef.current;
     if (!frame) return null;
@@ -2847,6 +3216,14 @@ function ReadingDesk({
     setTableMessage("");
     try {
       const effectiveEngine = parsingEngine === "__custom__" ? customParsingEngine : parsingEngine;
+      const activeEngine = ocrEngines.find((e) => e.engine_id === effectiveEngine);
+      const engineSettings: Record<string, any> = {};
+      if (activeEngine?.options_schema) {
+        activeEngine.options_schema.forEach((opt) => {
+          const val = ocrSettings[opt.name] !== undefined ? ocrSettings[opt.name] : opt.default;
+          engineSettings[opt.name] = val;
+        });
+      }
       const result = await fetchJson(`/api/v1/reading/sources/${pageData.source.source_id}/pages/${page}/regions/ocr`, {
         method: "POST",
         body: JSON.stringify({
@@ -2858,6 +3235,7 @@ function ReadingDesk({
           parsing_engine: effectiveEngine,
           output_format: "text",
           rotation: pageRotation,
+          ...engineSettings,
         }),
       });
       setRegionOcrResult(result);
@@ -2891,11 +3269,20 @@ function ReadingDesk({
     setTableMessage("");
     try {
       const effectiveEngine = parsingEngine === "__custom__" ? customParsingEngine : parsingEngine;
+      const activeEngine = ocrEngines.find((e) => e.engine_id === effectiveEngine);
+      const engineSettings: Record<string, any> = {};
+      if (activeEngine?.options_schema) {
+        activeEngine.options_schema.forEach((opt) => {
+          const val = ocrSettings[opt.name] !== undefined ? ocrSettings[opt.name] : opt.default;
+          engineSettings[opt.name] = val;
+        });
+      }
       const result = await fetchJson(`/api/v1/reading/sources/${pageData.source.source_id}/pages/${page}/ocr`, {
         method: "POST",
         body: JSON.stringify({
           parsing_engine: effectiveEngine,
           rotation: pageRotation,
+          ...engineSettings,
         }),
       });
       setRegionOcrResult(result);
@@ -3113,6 +3500,14 @@ function ReadingDesk({
         </div>
       </div>
 
+      <DynamicEngineSettings
+        engineId={parsingEngine === "__custom__" ? customParsingEngine : parsingEngine}
+        engines={ocrEngines}
+        settings={ocrSettings}
+        onChange={(name, val) => setOcrSettings((prev) => ({ ...prev, [name]: val }))}
+        layout="horizontal"
+      />
+
       {tableMessage && (
         <div className={`statusBanner ${isPositiveMessage(tableMessage) ? "success" : "info"}`} style={{ marginBottom: 16, padding: "8px 12px", borderRadius: 6, fontSize: 13 }}>
           {tableMessage}
@@ -3164,6 +3559,19 @@ function ReadingDesk({
                     <Hand size={14} /> Pan
                   </button>
                 </div>
+
+                {hasBoundingBoxes && (
+                  <button
+                    className="quietButton light"
+                    type="button"
+                    onClick={() => setShowBoundingBoxes(!showBoundingBoxes)}
+                    title="Toggle OCR Bounding Boxes Overlay"
+                    style={{ height: "30px", display: "inline-flex", alignItems: "center", gap: 4, marginRight: 8, padding: "0 8px", border: "1px solid #cfc7ba", borderRadius: 4, background: showBoundingBoxes ? "#eae3d5" : "transparent" }}
+                  >
+                    {showBoundingBoxes ? <Eye size={15} /> : <EyeOff size={15} />}
+                    <span>Boxes</span>
+                  </button>
+                )}
 
                 <button className="quietButton light" type="button" onClick={() => setPageRotation((current) => (current + 90) % 360)} style={{ height: "30px", display: "inline-flex", alignItems: "center" }}>
                   <RotateCw size={15} /> Rotate
@@ -3217,6 +3625,23 @@ function ReadingDesk({
                       onLoad={() => setPageImageError("")}
                     />
                     {activeRegion && <div className="regionOverlay" style={regionStyle(activeRegion)} />}
+                    {showBoundingBoxes && ocrBlocks.map((block, idx) => {
+                      const rectStyle = getBoundingBoxStyle(block);
+                      if (!rectStyle) return null;
+                      const isHovered = hoveredLineIndex === idx;
+                      const isActive = activeLineIndex === idx;
+                      return (
+                        <div
+                          key={`bbox-${idx}`}
+                          className={`ocrBoundingBox ${isHovered ? "hovered" : ""} ${isActive ? "active" : ""}`}
+                          style={rectStyle}
+                          onMouseEnter={() => setHoveredLineIndex(idx)}
+                          onMouseLeave={() => setHoveredLineIndex(-1)}
+                          onClick={() => handleBoundingBoxClick(idx)}
+                          title={block.text}
+                        />
+                      );
+                    })}
                   </div>
                   {pageImageError && (
                     <div className="errorBanner inline" style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -3343,6 +3768,8 @@ function ReadingDesk({
                 onChange={(e) => handleTextChange(e.target.value)}
                 onKeyDown={handleKeyDown}
                 onSelect={handleTextareaSelect}
+                onKeyUp={handleTextareaSelect}
+                onMouseUp={handleTextareaSelect}
                 onScroll={handleTextareaScroll}
                 spellCheck="false"
                 style={{ minHeight: 480 }}
