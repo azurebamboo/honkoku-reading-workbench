@@ -7,6 +7,7 @@ from backend.app.routers import (
     sources,
     reading,
     batch_ocr,
+    projects,
 )
 from backend.app.services.workbench import load_env
 
@@ -27,6 +28,7 @@ for router in (
     sources.router,
     reading.router,
     batch_ocr.router,
+    projects.router,
 ):
     app.include_router(router)
 
@@ -37,3 +39,24 @@ def health() -> dict[str, object]:
         "ok": True,
         "app": "standalone-ocr-reading-desk",
     }
+
+import sys
+from pathlib import Path
+from fastapi.responses import FileResponse
+
+if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+    BUNDLE_ROOT = Path(sys._MEIPASS)
+else:
+    BUNDLE_ROOT = Path(__file__).resolve().parents[3]
+
+@app.get("/")
+def read_root():
+    index_path = BUNDLE_ROOT / "frontend" / "dist" / "index.html"
+    if index_path.exists():
+        return FileResponse(index_path)
+    return {"message": "Koshu Standalone OCR backend is running. Build the frontend to view the Workbench UI."}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="127.0.0.1", port=8000)
+

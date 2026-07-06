@@ -86,7 +86,20 @@ def process_cascade(alllineobj:RecogLine,recognizer30,recognizer50,recognizer100
         resultlinesall=[t.pred_str for t in targetdflistall]
     return resultlinesall
 
+_detector_cache = None
+_recognizer_cache = {}
+
+def clear_ocr_model_cache():
+    global _detector_cache, _recognizer_cache
+    _detector_cache = None
+    _recognizer_cache.clear()
+    import gc
+    gc.collect()
+
 def get_detector(args):
+    global _detector_cache
+    if _detector_cache is not None:
+        return _detector_cache
     weights_path = args.det_weights
     classes_path = args.det_classes
     assert os.path.isfile(weights_path), f"There's no weight file with name {weights_path}"
@@ -97,11 +110,18 @@ def get_detector(args):
                       conf_threshold=args.det_conf_threshold,
                       iou_threshold=args.det_iou_threshold,
                       device=args.device)
+    _detector_cache = detector
     return detector
 
 def get_recognizer(args,weights_path=None):
+    global _recognizer_cache
     if weights_path is None:
         weights_path = args.rec_weights
+    
+    cache_key = (weights_path, getattr(args, 'enable_tcy', False))
+    if cache_key in _recognizer_cache:
+        return _recognizer_cache[cache_key]
+        
     classes_path = args.rec_classes
 
     assert os.path.isfile(weights_path), f"There's no weight file with name {weights_path}"
@@ -117,6 +137,8 @@ def get_recognizer(args,weights_path=None):
         from tcy_wrapper import TateChuYokoWrapper
         tcy_kwargs = {k: v for k, v in vars(args).items() if k.startswith('tcy_') and k != 'enable_tcy' and v is not None}
         recognizer = TateChuYokoWrapper(recognizer, **tcy_kwargs)
+    
+    _recognizer_cache[cache_key] = recognizer
     return recognizer
 
 def inference_on_detector(args,inputname:str,npimage:np.ndarray,outputpath:str,issaveimg:bool=True):
