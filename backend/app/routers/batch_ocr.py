@@ -225,6 +225,22 @@ def get_batch_biography_run(run_id: str) -> dict[str, Any]:
     return refresh_batch_manifest_counts(run_id)
 
 
+@router.post("/api/v1/batches/biographies/runs/{run_id}/stop")
+def stop_batch_biography_run(run_id: str) -> dict[str, Any]:
+    from backend.app.services.workbench import cancel_batch_run, batch_run_path, read_json, write_json
+    cancel_batch_run(run_id)
+    # Attempt to mark it as stopped in the manifest immediately
+    try:
+        manifest_path = batch_run_path(run_id)
+        if manifest_path.exists():
+            manifest = read_json(manifest_path)
+            manifest["status"] = "stopped"
+            write_json(manifest_path, manifest)
+    except Exception:
+        pass
+    return {"ok": True, "message": f"Stop request sent for run {run_id}"}
+
+
 @router.delete("/api/v1/batches/biographies/runs/{run_id}")
 def delete_batch_biography_run(run_id: str) -> dict[str, Any]:
     run_root = batch_run_root(run_id)

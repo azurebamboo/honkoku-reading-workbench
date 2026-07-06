@@ -22,6 +22,7 @@ import {
   RotateCcw,
   Save,
   Search,
+  Settings,
   AlertTriangle,
   UserRound,
   X,
@@ -176,6 +177,15 @@ function Workbench() {
   const [activeProject, setActiveProject] = useState("default");
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
+  const [showProjectNoteModal, setShowProjectNoteModal] = useState(false);
+  const [projectNoteText, setProjectNoteText] = useState("");
+  const [showSourceMetadataModal, setShowSourceMetadataModal] = useState(false);
+  const [metaSourceId, setMetaSourceId] = useState("");
+  const [metaTitle, setMetaTitle] = useState("");
+  const [metaCollection, setMetaCollection] = useState("");
+  const [metaCitation, setMetaCitation] = useState("");
+  const [metaNotes, setMetaNotes] = useState("");
+  const [pageNoteText, setPageNoteText] = useState("");
   const [mergeModalOpen, setMergeModalOpen] = useState(false);
   const [mergeInitialTargetId, setMergeInitialTargetId] = useState("");
   const [globalOcrResults, setGlobalOcrResults] = useState([]);
@@ -360,11 +370,103 @@ function Workbench() {
     return () => clearTimeout(timer);
   }, [filters.query]);
 
+  async function loadProjectNote(projectId) {
+    try {
+      const res = await fetchJson(`/api/v1/projects/${projectId}/note`);
+      setProjectNoteText(res.note || "");
+    } catch (err) {
+      console.error("Failed to load project note:", err);
+    }
+  }
+
+  async function saveProjectNote(projectId, note) {
+    try {
+      setLoading(true);
+      await fetchJson(`/api/v1/projects/${projectId}/note`, {
+        method: "PUT",
+        body: JSON.stringify({ note })
+      });
+      setShowProjectNoteModal(false);
+    } catch (err) {
+      alert("Failed to save project note: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleOpenSourceMetadata(sourceId) {
+    try {
+      setLoading(true);
+      const artifact = await fetchJson(`/api/v1/extraction-artifacts/${sourceId}`);
+      const srcRecord = readingSources.find(s => s.source_id === sourceId) || {};
+      
+      setMetaSourceId(sourceId);
+      setMetaTitle(srcRecord.title_original || srcRecord.title || artifact.title || sourceId);
+      setMetaCollection(srcRecord.collection || artifact.collection || "");
+      setMetaCitation(srcRecord.citation || artifact.citation || "");
+      setMetaNotes(artifact.notes || srcRecord.notes || "");
+      
+      setShowSourceMetadataModal(true);
+    } catch (err) {
+      alert("Failed to load source metadata: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSaveSourceMetadata() {
+    if (!metaTitle.trim()) {
+      alert("Source title is required");
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      await fetchJson(`/api/v1/sources/${metaSourceId}/metadata`, {
+        method: "PUT",
+        body: JSON.stringify({
+          title: metaTitle.trim(),
+          title_original: metaTitle.trim(),
+          collection: metaCollection.trim(),
+          citation: metaCitation.trim(),
+          notes: metaNotes
+        })
+      });
+      
+      setShowSourceMetadataModal(false);
+      
+      const readingData = await fetchJson("/api/v1/reading/sources");
+      setReadingSources(readingData);
+      if (selectedReadingSourceId === metaSourceId) {
+        await loadReadingPage(metaSourceId, selectedReadingPage);
+        await loadArtifact(metaSourceId);
+      }
+    } catch (err) {
+      alert("Failed to save source metadata: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function savePageNoteText(sourceId, page, note) {
+    if (!sourceId || !page) return;
+    try {
+      await fetchJson(`/api/v1/reading/sources/${sourceId}/pages/${page}/note`, {
+        method: "PUT",
+        body: JSON.stringify({ note })
+      });
+      await loadReadingPage(sourceId, page);
+    } catch (err) {
+      alert("Failed to save page note: " + err.message);
+    }
+  }
+
   async function loadProjects() {
     try {
       const data = await fetchJson("/api/v1/projects");
       setProjects(data.projects);
       setActiveProject(data.active);
+      loadProjectNote(data.active);
     } catch (err) {
       console.error("Failed to load projects", err);
     }
@@ -378,6 +480,7 @@ function Workbench() {
         body: JSON.stringify({ project_id: projectId }),
       });
       setActiveProject(projectId);
+      loadProjectNote(projectId);
       setSelectedReadingSourceId("");
       setSelectedBatchRunId("");
       setSelectedArtifactId("");
@@ -539,7 +642,7 @@ function Workbench() {
 
     const interval = setInterval(async () => {
       try {
-        const batchRunData = await fetchJson("/batch/biographies/runs");
+        const batchRunData = await fetchJson("/api/v1/batches/biographies/runs");
         setBatchRuns(batchRunData);
         if (selectedBatchRunId) {
           await loadBatchPages(selectedBatchRunId);
@@ -597,6 +700,7 @@ function Workbench() {
       const pageData = await fetchJson(`/api/v1/reading/sources/${sourceId}/pages/${page}`);
       setReadingPage(pageData);
       setReadingText(pageData.ocr.corrected_text || pageData.ocr.raw_text || "");
+      setPageNoteText(pageData.page_note || "");
       setDeskForm((current) => ({ ...current, quote: "", keyword: "", customKeyword: "", note: "", claimText: "", evidenceId: "" }));
       rememberReadingSource(sourceId);
     } catch (err) {
@@ -1163,6 +1267,26 @@ function Workbench() {
             {activeProject !== "default" && (
               <>
                 <button
+                  onClick={() => setShowProjectNoteModal(true)}
+                  title="View/Edit Project Notes & Research Context"
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "var(--text-secondary)",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: 4,
+                    borderRadius: 4,
+                    transition: "background 0.2s",
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.background = "var(--bg-surface-elevated)"}
+                  onMouseOut={(e) => e.currentTarget.style.background = "transparent"}
+                >
+                  <NotebookPen size={16} />
+                </button>
+                <button
                   onClick={handleRenameProject}
                   title="Rename current project"
                   style={{
@@ -1239,11 +1363,14 @@ function Workbench() {
             onSaveOcr={saveOcrReview}
             onSaveEvidence={saveDeskEvidence}
             onImportPdf={importReadingPdf}
-            onRenameSource={handleRenameSource}
+            onRenameSource={handleOpenSourceMetadata}
             onDeleteSource={handleDeleteSource}
             onReloadPage={() => loadReadingPage(selectedReadingSourceId, selectedReadingPage)}
             searchTerm={readingSearchTerm}
             setSearchTerm={setReadingSearchTerm}
+            pageNoteText={pageNoteText}
+            onPageNoteTextChange={setPageNoteText}
+            onSavePageNote={savePageNoteText}
           />
         )}
 
@@ -1638,6 +1765,206 @@ function Workbench() {
           </div>
         </div>
       )}
+
+      {showProjectNoteModal && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: "rgba(0, 0, 0, 0.4)",
+          backdropFilter: "blur(4px)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 9999,
+        }}>
+          <div style={{
+            background: "var(--bg-surface, #fff)",
+            padding: 24,
+            borderRadius: 12,
+            border: "1px solid var(--border-color)",
+            boxShadow: "0 8px 32px rgba(0, 0, 0, 0.15)",
+            width: 600,
+            maxWidth: "90%",
+          }}>
+            <h3 style={{ marginTop: 0, marginBottom: 16, fontSize: 18, fontWeight: 600 }}>Project Research Notes & Context</h3>
+            <div style={{ marginBottom: 12, fontSize: "0.85rem", color: "var(--text-secondary)" }}>
+              Define the overarching context and research goals of the active project. These notes will be embedded as YAML frontmatter in Markdown exports.
+            </div>
+            <textarea
+              value={projectNoteText}
+              onChange={(e) => setProjectNoteText(e.target.value)}
+              placeholder="Enter project description, historical context, sources list, translation guides, or notes..."
+              style={{
+                width: "100%",
+                height: 300,
+                padding: "8px 12px",
+                borderRadius: 6,
+                border: "1px solid var(--border-color)",
+                marginBottom: 16,
+                fontSize: 14,
+                boxSizing: "border-box",
+                background: "var(--bg-surface-elevated, #fff)",
+                color: "var(--text-primary)",
+                resize: "vertical",
+                fontFamily: "inherit"
+              }}
+            />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
+              <button
+                className="quietButton"
+                onClick={() => setShowProjectNoteModal(false)}
+                style={{ padding: "8px 16px", borderRadius: 6 }}
+              >
+                Cancel
+              </button>
+              <button
+                className="primaryButton"
+                onClick={() => saveProjectNote(activeProject, projectNoteText)}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: 6,
+                  background: "var(--color-primary, #1e40af)",
+                  color: "#fff",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                Save Notes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSourceMetadataModal && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: "rgba(0, 0, 0, 0.4)",
+          backdropFilter: "blur(4px)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 9999,
+        }}>
+          <div style={{
+            background: "var(--bg-surface, #fff)",
+            padding: 24,
+            borderRadius: 12,
+            border: "1px solid var(--border-color)",
+            boxShadow: "0 8px 32px rgba(0, 0, 0, 0.15)",
+            width: 550,
+            maxWidth: "90%",
+          }}>
+            <h3 style={{ marginTop: 0, marginBottom: 16, fontSize: 18, fontWeight: 600 }}>Edit Source Metadata</h3>
+            
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 16 }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-secondary)" }}>Title</span>
+                <input
+                  type="text"
+                  value={metaTitle}
+                  onChange={(e) => setMetaTitle(e.target.value)}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 6,
+                    border: "1px solid var(--border-color)",
+                    background: "var(--bg-surface-elevated, #fff)",
+                    color: "var(--text-primary)",
+                    fontSize: 14
+                  }}
+                />
+              </label>
+
+              <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-secondary)" }}>Collection / Volume</span>
+                <input
+                  type="text"
+                  value={metaCollection}
+                  onChange={(e) => setMetaCollection(e.target.value)}
+                  placeholder="e.g. Imperial Shōgunate Biographies, Vol. 4"
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 6,
+                    border: "1px solid var(--border-color)",
+                    background: "var(--bg-surface-elevated, #fff)",
+                    color: "var(--text-primary)",
+                    fontSize: 14
+                  }}
+                />
+              </label>
+
+              <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-secondary)" }}>Bibliographic Citation</span>
+                <input
+                  type="text"
+                  value={metaCitation}
+                  onChange={(e) => setMetaCitation(e.target.value)}
+                  placeholder="e.g. Tokyo: National Diet Library, 1923"
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 6,
+                    border: "1px solid var(--border-color)",
+                    background: "var(--bg-surface-elevated, #fff)",
+                    color: "var(--text-primary)",
+                    fontSize: 14
+                  }}
+                />
+              </label>
+
+              <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-secondary)" }}>Source-level Research Notes</span>
+                <textarea
+                  value={metaNotes}
+                  onChange={(e) => setMetaNotes(e.target.value)}
+                  placeholder="Context of this specific source document, archival details, provenance history..."
+                  style={{
+                    height: 120,
+                    padding: "8px 12px",
+                    borderRadius: 6,
+                    border: "1px solid var(--border-color)",
+                    background: "var(--bg-surface-elevated, #fff)",
+                    color: "var(--text-primary)",
+                    fontSize: 14,
+                    resize: "vertical",
+                    fontFamily: "inherit"
+                  }}
+                />
+              </label>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
+              <button
+                className="quietButton"
+                onClick={() => setShowSourceMetadataModal(false)}
+                style={{ padding: "8px 16px", borderRadius: 6 }}
+              >
+                Cancel
+              </button>
+              <button
+                className="primaryButton"
+                onClick={handleSaveSourceMetadata}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: 6,
+                  background: "var(--color-primary, #1e40af)",
+                  color: "#fff",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
@@ -1813,6 +2140,40 @@ function BatchReview({
 
   // Accordion expanded state for quote cards
   const [expandedQuotes, setExpandedQuotes] = useState({});
+
+  // Keep logs of the active run status updates
+  const [logs, setLogs] = useState<string[]>([]);
+  const lastStatus = useRef("");
+
+  const activeRun = runs.find((run) =>
+    run.status === "processing" ||
+    (run.status && (
+      run.status.startsWith("Installing") ||
+      run.status.startsWith("Loading") ||
+      run.status.startsWith("Running") ||
+      run.status.startsWith("Text") ||
+      run.status.includes("/")
+    ))
+  );
+
+  useEffect(() => {
+    // Clear logs when active run changes
+    setLogs([]);
+    lastStatus.current = "";
+  }, [activeRun?.run_id]);
+
+  useEffect(() => {
+    if (activeRun?.status) {
+      const status = activeRun.status;
+      if (status !== lastStatus.current) {
+        setLogs((prev) => {
+          if (prev.includes(status)) return prev;
+          return [...prev, status];
+        });
+        lastStatus.current = status;
+      }
+    }
+  }, [activeRun?.status]);
 
   useEffect(() => {
     setDraftPage(selectedPage ? JSON.parse(JSON.stringify(selectedPage)) : null);
@@ -2102,36 +2463,6 @@ function BatchReview({
             </div>
           )}
 
-          {(() => {
-            const activeRun = runs.find(run => 
-              run.status === "processing" || 
-              (run.status && (
-                run.status.startsWith("Installing") || 
-                run.status.startsWith("Loading") || 
-                run.status.startsWith("Running") || 
-                run.status.startsWith("Text") || 
-                run.status.includes("/")
-              ))
-            );
-            if (activeRun) {
-              const pct = getStatusPercent(activeRun.status);
-              return (
-                <div style={{ padding: "12px", background: "var(--bg-surface-elevated, #fcfbf9)", border: "1px solid var(--border-color)", borderRadius: 6, marginTop: 12 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, fontWeight: 600, color: "var(--text-primary)" }}>
-                    <span>Active Run Status</span>
-                    <span>{pct}%</span>
-                  </div>
-                  <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 4, fontStyle: "italic" }}>
-                    {activeRun.status}
-                  </div>
-                  <div className="progressBarContainer" style={{ background: "var(--border-color-light, #f5f5f5)", borderRadius: 4, height: 6, width: "100%", overflow: "hidden", marginTop: 8 }}>
-                    <div className="progressBarFill" style={{ background: "var(--accent-primary, #7d3d2f)", width: `${pct}%`, height: "100%", transition: "width 0.3s ease" }} />
-                  </div>
-                </div>
-              );
-            }
-            return null;
-          })()}
         </div>
 
         <div style={{ borderTop: "1px solid var(--border-color, #e1dacd)", paddingTop: "16px" }}>
@@ -2241,11 +2572,81 @@ function BatchReview({
       </section>
 
       <section className="panel batchPagePanel">
-        <PanelTitle icon={<NotebookPen size={18} />} title="Batch Page Review" />
-        {!draftPage ? (
-          <p className="muted">Select a page from the queue on the left.</p>
+        {activeRun ? (
+          <>
+            <PanelTitle icon={<Database size={18} />} title="Active Batch Process Status" />
+            <div style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "14px",
+              padding: "16px",
+              background: "var(--bg-surface-elevated, #fcfbf9)",
+              borderRadius: "8px",
+              border: "1px solid var(--border-color, #e1dacd)",
+              marginTop: "12px"
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", fontWeight: 600, color: "var(--text-primary)" }}>
+                <span>Run Status ({activeRun.run_id})</span>
+                <span>{getStatusPercent(activeRun.status)}%</span>
+              </div>
+              <div style={{ fontSize: "12px", color: "var(--text-secondary)", fontStyle: "italic", lineHeight: "1.4", wordBreak: "break-word" }}>
+                {activeRun.status}
+              </div>
+              <div className="progressBarContainer" style={{ background: "var(--border-color-light, #f5f5f5)", borderRadius: 4, height: 8, width: "100%", overflow: "hidden" }}>
+                <div className="progressBarFill" style={{ background: "var(--accent-primary, #7d3d2f)", width: `${getStatusPercent(activeRun.status)}%`, height: "100%", transition: "width 0.3s ease" }} />
+              </div>
+              
+              <h4 style={{ marginTop: "14px", marginBottom: "4px", color: "var(--text-primary)", fontSize: "13px" }}>Terminal Progress Messages</h4>
+              <div style={{
+                background: "#172326",
+                color: "#cbd8d5",
+                fontFamily: "monospace",
+                padding: "12px",
+                borderRadius: "6px",
+                height: "220px",
+                overflowY: "auto",
+                fontSize: "12px",
+                lineHeight: "1.5"
+              }}>
+                {logs.map((log, i) => (
+                  <div key={i} style={{ marginBottom: "4px" }}>
+                    &gt; {log}
+                  </div>
+                ))}
+                {logs.length === 0 && (
+                  <div style={{ color: "#718083", fontStyle: "italic" }}>Waiting for progress messages...</div>
+                )}
+              </div>
+              
+              <button
+                className="quietButton light dangerButton"
+                type="button"
+                onClick={async () => {
+                  try {
+                    await fetchJson(`/api/v1/batches/biographies/runs/${activeRun.run_id}/stop`, {
+                      method: "POST"
+                    });
+                    if (onRefresh) {
+                      await onRefresh();
+                    }
+                  } catch (err) {
+                    console.error("Stopping run failed:", err);
+                  }
+                }}
+                style={{ marginTop: "8px", width: "100%", justifyContent: "center" }}
+              >
+                Stop Batch Process
+              </button>
+            </div>
+          </>
+        ) : !draftPage ? (
+          <>
+            <PanelTitle icon={<NotebookPen size={18} />} title="Batch Page Review" />
+            <p className="muted">Select a page from the queue on the left.</p>
+          </>
         ) : (
           <>
+            <PanelTitle icon={<NotebookPen size={18} />} title="Batch Page Review" />
             <div className="statusBadgeRow">
               <span className="statusBadge warning">Batch candidate</span>
               <span className="statusBadge success">Promoted only after approval</span>
@@ -2489,6 +2890,9 @@ function ReadingDesk({
   onReloadPage,
   searchTerm,
   setSearchTerm,
+  pageNoteText,
+  onPageNoteTextChange,
+  onSavePageNote,
 }) {
   const imageFrameRef = useRef(null);
   const pageWrapRef = useRef(null);
@@ -2765,18 +3169,10 @@ function ReadingDesk({
         }
       }
 
-      // Find the nonEmptyLineCount-th non-empty block in ocrBlocks
+      // Find corresponding block index using the calculated mapping
       let blockIdx = -1;
-      let nonEmptyBlockCount = 0;
-      for (let i = 0; i < ocrBlocks.length; i++) {
-        const block = ocrBlocks[i];
-        if (block && block.text && block.text.trim() !== "") {
-          if (nonEmptyBlockCount === nonEmptyLineCount) {
-            blockIdx = i;
-            break;
-          }
-          nonEmptyBlockCount++;
-        }
+      if (nonEmptyLineCount < blockLinesInfo.lineToBlock.length) {
+        blockIdx = blockLinesInfo.lineToBlock[nonEmptyLineCount];
       }
       setActiveLineIndex(blockIdx);
     } else {
@@ -2941,6 +3337,9 @@ function ReadingDesk({
       if (format === "json") {
         blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
         filename = `${source.source_id}_ocr_export.json`;
+      } else if (format === "md") {
+        blob = new Blob([data.markdown_text], { type: "text/markdown;charset=utf-8" });
+        filename = `${source.source_id}_ocr_export.md`;
       } else {
         blob = new Blob([data.plain_text], { type: "text/plain;charset=utf-8" });
         filename = `${source.source_id}_ocr_export.txt`;
@@ -3014,6 +3413,30 @@ function ReadingDesk({
     return ocrBlocks.some(block => block.boundingBox && Array.isArray(block.boundingBox) && block.boundingBox.length >= 4);
   }, [ocrBlocks]);
 
+  const blockLinesInfo = useMemo(() => {
+    const lineToBlock = []; // maps non-empty line index -> ocrBlock index
+    const blockToLine = []; // maps ocrBlock index -> first non-empty line index of this block
+    
+    let nonEmptyLineCount = 0;
+    for (let i = 0; i < ocrBlocks.length; i++) {
+      const block = ocrBlocks[i];
+      blockToLine[i] = nonEmptyLineCount;
+      
+      if (block && block.text && block.text.trim() !== "") {
+        const blockLines = block.text.split("\n");
+        let blockNonEmptyLines = 0;
+        for (const line of blockLines) {
+          if (line.trim() !== "") {
+            lineToBlock.push(i);
+            blockNonEmptyLines++;
+          }
+        }
+        nonEmptyLineCount += blockNonEmptyLines;
+      }
+    }
+    return { lineToBlock, blockToLine };
+  }, [ocrBlocks]);
+
   const regionCoords = useMemo(() => {
     const ocrData = ocrDataSource;
     if (ocrData && ocrData.region_ocr && ocrData.region_ocr.region) {
@@ -3071,30 +3494,25 @@ function ReadingDesk({
 
     const lines = text.split("\n");
 
-    // Find how many non-empty blocks in ocrBlocks are before idx
-    let nonEmptyBlockCount = 0;
-    for (let i = 0; i < idx; i++) {
-      const block = ocrBlocks[i];
-      if (block && block.text && block.text.trim() !== "") {
-        nonEmptyBlockCount++;
-      }
-    }
-
-    // Find the nonEmptyBlockCount-th non-empty line in textarea lines
+    // Find the first non-empty line index of this block from the mapping
+    const targetNonEmptyLineIdx = blockLinesInfo.blockToLine[idx];
     let textareaLineIdx = -1;
-    let nonEmptyLineCount = 0;
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].trim() !== "") {
-        if (nonEmptyLineCount === nonEmptyBlockCount) {
-          textareaLineIdx = i;
-          break;
+    
+    if (targetNonEmptyLineIdx !== undefined) {
+      let nonEmptyLineCount = 0;
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].trim() !== "") {
+          if (nonEmptyLineCount === targetNonEmptyLineIdx) {
+            textareaLineIdx = i;
+            break;
+          }
+          nonEmptyLineCount++;
         }
-        nonEmptyLineCount++;
       }
     }
 
     if (textareaLineIdx === -1) {
-      // Fallback: if we can't align via non-empty lines, just use idx if it's within range
+      // Fallback: if we can't align via mapping, just use idx if it's within range
       if (idx < lines.length) {
         textareaLineIdx = idx;
       } else {
@@ -3343,11 +3761,11 @@ function ReadingDesk({
               <button
                 className="quietButton light"
                 type="button"
-                onClick={() => onRenameSource(source.source_id, source.title_original || source.title)}
-                title="Rename current source"
+                onClick={() => onRenameSource(source.source_id)}
+                title="Edit current source metadata & research notes"
                 style={{ display: "flex", alignItems: "center", gap: 4 }}
               >
-                <Edit size={14} /> Rename Source
+                <Settings size={14} /> Edit Metadata
               </button>
               <button
                 className="quietButton light"
@@ -3487,6 +3905,15 @@ function ReadingDesk({
             title="Export compiled OCR text of all pages in this source as plain text"
           >
             Export All TXT
+          </button>
+          <button
+            className="quietButton light"
+            type="button"
+            onClick={() => handleExportText("md")}
+            disabled={!sourceReady}
+            title="Export compiled OCR text of all pages, metadata, and research notes as Markdown (.md)"
+          >
+            Export All MD
           </button>
           <button
             className="quietButton light"
@@ -3776,6 +4203,37 @@ function ReadingDesk({
               />
             </div>
           </label>
+
+          {sourceReady && pageReady && (
+            <label className="deskField" style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span>Page Research Note (included in exports)</span>
+                <button
+                  className="primaryButton"
+                  type="button"
+                  onClick={() => onSavePageNote(source.source_id, page, pageNoteText)}
+                  style={{ minHeight: "24px", height: "24px", padding: "0 8px", fontSize: "0.75rem", borderRadius: 4 }}
+                >
+                  Save Page Note
+                </button>
+              </div>
+              <textarea
+                value={pageNoteText}
+                onChange={(e) => onPageNoteTextChange(e.target.value)}
+                placeholder="Enter context, translations, or annotations for this page..."
+                style={{
+                  minHeight: 100,
+                  fontSize: "0.85rem",
+                  padding: 8,
+                  borderRadius: 6,
+                  border: "1px solid var(--border-color)",
+                  background: "var(--bg-surface-elevated, #fff)",
+                  color: "var(--text-primary)",
+                  resize: "vertical"
+                }}
+              />
+            </label>
+          )}
 
         </div>
       </div>

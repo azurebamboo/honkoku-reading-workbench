@@ -794,12 +794,100 @@ def reading_source_export_text(source_id: str) -> dict[str, Any]:
     for p in pages_text:
         plain_text += f"--- PAGE {p['page']} ---\n{p['text']}\n\n"
         
+    # Compile Markdown Export with notes
+    project_id = wb.ACTIVE_PROJECT_ID
+    if project_id == "default":
+        proj_note_path = wb.ROOT / "db" / "project_note.txt"
+    else:
+        proj_note_path = wb.ROOT / "projects" / project_id / "project_note.txt"
+    project_note = ""
+    if proj_note_path.exists():
+        project_note = proj_note_path.read_text(encoding="utf-8")
+        
+    artifact = reading_extraction_artifact(source_id)
+    source_notes = artifact.get("notes") or source.get("notes") or ""
+    page_notes_dict = artifact.get("page_notes", {})
+    
+    title = source.get("title_original") or source.get("title") or source_id
+    collection = source.get("collection") or ""
+    citation = source.get("citation") or ""
+    
+    markdown_lines = [
+        "---",
+        f"title: {repr(title)}",
+        f"source_id: {repr(source_id)}",
+        f"collection: {repr(collection)}",
+        f"citation: {repr(citation)}",
+    ]
+    
+    if project_note.strip():
+        markdown_lines.append("project_note: |")
+        for line in project_note.splitlines():
+            markdown_lines.append(f"  {line}")
+            
+    if source_notes.strip():
+        markdown_lines.append("source_note: |")
+        for line in source_notes.splitlines():
+            markdown_lines.append(f"  {line}")
+            
+    markdown_lines.append("---")
+    markdown_lines.append("")
+    markdown_lines.append(f"# {title}")
+    markdown_lines.append("")
+    
+    for p in pages_text:
+        page_num = p["page"]
+        page_note = page_notes_dict.get(str(page_num)) or page_notes_dict.get(page_num) or ""
+        
+        markdown_lines.append(f"## Page {page_num}")
+        if page_note.strip():
+            markdown_lines.append("")
+            markdown_lines.append("> **Page Note:**")
+            for line in page_note.splitlines():
+                markdown_lines.append(f"> {line}")
+            markdown_lines.append("")
+            
+        markdown_lines.append(p["text"])
+        markdown_lines.append("")
+        
+    markdown_text = "\n".join(markdown_lines)
+    
     return {
         "source_id": source_id,
-        "title": source.get("title_original") or source.get("title") or source_id,
+        "title": title,
         "pages": pages_text,
-        "plain_text": plain_text.strip()
+        "plain_text": plain_text.strip(),
+        "markdown_text": markdown_text.strip()
     }
+
+
+
+@router.get("/api/v1/extraction-artifacts/{source_id}")
+def get_extraction_artifact(source_id: str) -> dict[str, Any]:
+    return reading_extraction_artifact(source_id)
+
+
+@router.put("/api/v1/extraction-artifacts/{source_id}")
+async def update_extraction_artifact(source_id: str, request: Request) -> dict[str, Any]:
+    payload = await request.json()
+    save_reading_extraction_artifact(source_id, payload)
+    return {"ok": True}
+
+
+@router.put("/api/v1/reading/sources/{source_id}/pages/{page}/note")
+async def save_page_note(source_id: str, page: int, request: Request) -> dict[str, Any]:
+    if page < 1:
+        raise HTTPException(status_code=400, detail="Page must be a positive integer")
+    payload = await request.json()
+    note_text = payload.get("note", "").strip()
+    
+    artifact = reading_extraction_artifact(source_id)
+    page_notes = artifact.setdefault("page_notes", {})
+    page_notes[str(page)] = note_text
+    
+    save_reading_extraction_artifact(source_id, artifact)
+    return {"ok": True}
+
 
 
 @router.get("/api/v1/reading/sources/{source_id}/pages/{page}")
@@ -932,6 +1020,7 @@ def reading_page(source_id: str, page: int) -> dict[str, Any]:
         "reading_notes": [
             note for note in artifact.get("reading_notes", []) if note.get("page") == page
         ],
+        "page_note": artifact.get("page_notes", {}).get(str(page), ""),
         "candidates": candidate_highlights(artifact, page, effective_text),
         "vocabularies": reading_vocabularies(),
     }
