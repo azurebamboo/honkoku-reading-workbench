@@ -30,7 +30,11 @@ else:
     BUNDLE_ROOT = Path(__file__).resolve().parents[3]
 
 if getattr(sys, 'frozen', False):
-    DATA_ROOT = Path(sys.executable).parent
+    exe_dir = Path(sys.executable).parent
+    if exe_dir.name == "koshu-ocr-backend" and exe_dir.parent.name == "dist":
+        DATA_ROOT = exe_dir.parent.parent
+    else:
+        DATA_ROOT = exe_dir
 else:
     DATA_ROOT = Path(__file__).resolve().parents[3]
 
@@ -1053,8 +1057,9 @@ def reading_extraction_artifact(source_id: str) -> dict[str, Any]:
 def save_reading_extraction_artifact(source_id: str, artifact: dict[str, Any]) -> None:
     validate_extraction_candidate(source_id, artifact)
     write_json(extraction_artifact_path(source_id), artifact)
-    run_workspace_script("validate_extractions.py")
-    run_workspace_script("build_database.py")
+    # run_workspace_script("validate_extractions.py")
+    # run_workspace_script("build_database.py")
+    pass
 
 
 def include_page_in_scope(artifact: dict[str, Any], page: int) -> None:

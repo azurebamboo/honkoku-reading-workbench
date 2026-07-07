@@ -749,6 +749,7 @@ function Workbench() {
           region_ocr_json: provenance.region_ocr_json || "",
           region: provenance.region || {},
           region_id: provenance.region_id || "",
+          tables: provenance.tables,
           debug: import.meta.env.DEV,
         }),
       });
@@ -1122,46 +1123,16 @@ function Workbench() {
     }
   }
 
-  const filteredEntities = useMemo(() => {
-    return entities.filter((entity) => {
-      if (filters.entityType && entity.entity_type !== filters.entityType) return false;
-      if (filters.sourceId && !entity.source_ids?.includes(filters.sourceId)) return false;
-      return matchesQuery(entity, filters.query);
-    });
-  }, [entities, filters]);
-
-  const filteredRelationships = useMemo(() => {
-    return relationships.filter((claim) => {
-      if (filters.sourceId && claim.source_id !== filters.sourceId) return false;
-      if (filters.relationType && claim.relation_type !== filters.relationType) return false;
-      if (filters.page && String(claim.page) !== String(filters.page)) return false;
-      return matchesQuery(claim, filters.query);
-    });
-  }, [relationships, filters]);
-
-  const filteredAttitudes = useMemo(() => {
-    return attitudes.filter((claim) => {
-      if (filters.sourceId && claim.source_id !== filters.sourceId) return false;
-      if (filters.attitudeType && claim.attitude_type !== filters.attitudeType) return false;
-      if (filters.polarity && claim.polarity !== filters.polarity) return false;
-      if (filters.page && String(claim.page) !== String(filters.page)) return false;
-      return matchesQuery(claim, filters.query);
-    });
-  }, [attitudes, filters]);
-
   const selectedReadingSource = readingSources.find((source) => source.source_id === selectedReadingSourceId);
   const recentReadingSources = recentReadingSourceIds
     .map((sourceId) => readingSources.find((source) => source.source_id === sourceId))
     .filter(Boolean);
+
   const activeCount = {
     reading: selectedReadingSource?.ocr_pages?.length || 0,
-    interactive_desk: entities.length,
     batch: batchPages.length,
-    entities: filteredEntities.length,
-    relationships: filteredRelationships.length,
-    attitudes: filteredAttitudes.length,
-    editor: editableArtifacts.length,
-  }[activeTab];
+  }[activeTab] || 0;
+
 
   return (
     <main className="appShell sidebar-collapsed">
@@ -1400,248 +1371,7 @@ function Workbench() {
         )}
       </section>
 
-      {/* Spreadsheet Hand-Editing Modals */}
-      {editingEntity && (
-        <div className="customModalOverlay">
-          <div className="customModal">
-            <h3 className="customModalTitle">Edit Entity</h3>
-            <div className="customModalBody">
-              <label className="deskField">
-                <span>Canonical Name</span>
-                <input 
-                  type="text" 
-                  value={editingEntity.canonical_name || ""} 
-                  onChange={(e) => setEditingEntity({ ...editingEntity, canonical_name: e.target.value })}
-                />
-              </label>
-              <label className="deskField">
-                <span>Name (Original)</span>
-                <input 
-                  type="text" 
-                  value={editingEntity.name_original || ""} 
-                  onChange={(e) => setEditingEntity({ ...editingEntity, name_original: e.target.value })}
-                />
-              </label>
-              <CategorySelector
-                label="Type"
-                value={editingEntity.entity_type || "person"}
-                onChange={(val) => setEditingEntity({ ...editingEntity, entity_type: val })}
-                types={entityTypes}
-                setTypes={setEntityTypes}
-                isEntity={true}
-              />
-              <label className="deskField">
-                <span>Aliases (Comma separated)</span>
-                <input 
-                  type="text" 
-                  value={editingEntity.aliasesString || ""} 
-                  onChange={(e) => setEditingEntity({ ...editingEntity, aliasesString: e.target.value })}
-                />
-              </label>
-              <label className="deskField">
-                <span>Notes</span>
-                <textarea 
-                  value={editingEntity.notes || ""} 
-                  onChange={(e) => setEditingEntity({ ...editingEntity, notes: e.target.value })}
-                />
-              </label>
-            </div>
-            <div className="customModalActions">
-              <button className="quietButton light" onClick={() => setEditingEntity(null)}>Cancel</button>
-              <button 
-                className="primaryButton" 
-                onClick={() => handleUpdateEntity({
-                  ...editingEntity,
-                  aliases: editingEntity.aliasesString.split(",").map(a => a.trim()).filter(Boolean)
-                })}
-              >
-                Save Changes
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {editingRelationship && (
-        <div className="customModalOverlay">
-          <div className="customModal">
-            <h3 className="customModalTitle">Edit Relationship Claim</h3>
-            <div className="customModalBody">
-              <label className="deskField">
-                <span>Subject Name</span>
-                <input 
-                  type="text" 
-                  value={editingRelationship.subject_name || ""} 
-                  onChange={(e) => setEditingRelationship({ ...editingRelationship, subject_name: e.target.value })}
-                />
-              </label>
-              <CategorySelector
-                label="Relation Type"
-                value={editingRelationship.relation_type || "spouse"}
-                onChange={(val) => setEditingRelationship({ ...editingRelationship, relation_type: val })}
-                types={relationTypes}
-                setTypes={setRelationTypes}
-                isEntity={false}
-              />
-              <label className="deskField">
-                <span>Object Name</span>
-                <input 
-                  type="text" 
-                  value={editingRelationship.object_name || ""} 
-                  onChange={(e) => setEditingRelationship({ ...editingRelationship, object_name: e.target.value })}
-                />
-              </label>
-              <label className="deskField">
-                <span>Confidence</span>
-                <select 
-                  value={editingRelationship.confidence || "medium"} 
-                  onChange={(e) => setEditingRelationship({ ...editingRelationship, confidence: e.target.value })}
-                >
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
-                </select>
-              </label>
-              <label className="deskField">
-                <span>Note</span>
-                <textarea 
-                  value={editingRelationship.note || ""} 
-                  onChange={(e) => setEditingRelationship({ ...editingRelationship, note: e.target.value })}
-                />
-              </label>
-            </div>
-            <div className="customModalActions">
-              <button className="quietButton light" onClick={() => setEditingRelationship(null)}>Cancel</button>
-              <button 
-                className="primaryButton" 
-                onClick={() => handleUpdateRelationship({
-                  source_id: editingRelationship.source_id,
-                  relationship_id: editingRelationship.relationship_id,
-                  relation_type: editingRelationship.relation_type,
-                  confidence: editingRelationship.confidence,
-                  note: editingRelationship.note,
-                  page: editingRelationship.page,
-                  evidence_id: editingRelationship.evidence_id,
-                  quote: editingRelationship.quote,
-                  subject: {
-                    entity_id: editingRelationship.subject_entity_id,
-                    name: editingRelationship.subject_name,
-                    entity_type: editingRelationship.subject_type || "person"
-                  },
-                  object: {
-                    entity_id: editingRelationship.object_entity_id,
-                    name: editingRelationship.object_name,
-                    entity_type: editingRelationship.object_type || "person"
-                  }
-                })}
-              >
-                Save Changes
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {editingAttitude && (
-        <div className="customModalOverlay">
-          <div className="customModal">
-            <h3 className="customModalTitle">Edit Attitude Claim</h3>
-            <div className="customModalBody">
-              <label className="deskField">
-                <span>Speaker Name</span>
-                <input 
-                  type="text" 
-                  value={editingAttitude.speaker_name || ""} 
-                  onChange={(e) => setEditingAttitude({ ...editingAttitude, speaker_name: e.target.value })}
-                />
-              </label>
-              <label className="deskField">
-                <span>Attitude Type</span>
-                <input 
-                  type="text" 
-                  value={editingAttitude.attitude_type || ""} 
-                  onChange={(e) => setEditingAttitude({ ...editingAttitude, attitude_type: e.target.value })}
-                />
-              </label>
-              <label className="deskField">
-                <span>Polarity</span>
-                <select 
-                  value={editingAttitude.polarity || "positive"} 
-                  onChange={(e) => setEditingAttitude({ ...editingAttitude, polarity: e.target.value })}
-                >
-                  <option value="positive">Positive</option>
-                  <option value="negative">Negative</option>
-                  <option value="neutral">Neutral</option>
-                </select>
-              </label>
-              <label className="deskField">
-                <span>Target Name</span>
-                <input 
-                  type="text" 
-                  value={editingAttitude.target_name || ""} 
-                  onChange={(e) => setEditingAttitude({ ...editingAttitude, target_name: e.target.value })}
-                />
-              </label>
-              <label className="deskField">
-                <span>Confidence</span>
-                <select 
-                  value={editingAttitude.confidence || "medium"} 
-                  onChange={(e) => setEditingAttitude({ ...editingAttitude, confidence: e.target.value })}
-                >
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
-                </select>
-              </label>
-              <label className="deskField">
-                <span>Note</span>
-                <textarea 
-                  value={editingAttitude.note || ""} 
-                  onChange={(e) => setEditingAttitude({ ...editingAttitude, note: e.target.value })}
-                />
-              </label>
-            </div>
-            <div className="customModalActions">
-              <button className="quietButton light" onClick={() => setEditingAttitude(null)}>Cancel</button>
-              <button 
-                className="primaryButton" 
-                onClick={() => handleUpdateAttitude({
-                  source_id: editingAttitude.source_id,
-                  attitude_id: editingAttitude.attitude_id,
-                  attitude_type: editingAttitude.attitude_type,
-                  polarity: editingAttitude.polarity,
-                  confidence: editingAttitude.confidence,
-                  note: editingAttitude.note,
-                  page: editingAttitude.page,
-                  evidence_id: editingAttitude.evidence_id,
-                  quote: editingAttitude.quote,
-                  speaker: {
-                    entity_id: editingAttitude.speaker_entity_id,
-                    name: editingAttitude.speaker_name,
-                    entity_type: editingAttitude.speaker_type || "person"
-                  },
-                  target: {
-                    entity_id: editingAttitude.target_entity_id,
-                    name: editingAttitude.target_name,
-                    entity_type: editingAttitude.target_type || "person"
-                  }
-                })}
-              >
-                Save Changes
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {evidence && <EvidenceDrawer evidence={evidence} onClose={() => setEvidence(null)} onJumpToReadingDesk={jumpToReadingPage} />}
-      <MergeEntitiesModal 
-        isOpen={mergeModalOpen} 
-        onClose={() => setMergeModalOpen(false)} 
-        entities={entities} 
-        onMerge={handleMergeEntities} 
-        initialTargetId={mergeInitialTargetId} 
-      />
       {showNewProjectModal && (
         <div style={{
           position: "fixed",
@@ -2456,6 +2186,34 @@ function ReadingDesk({
   const [showBoundingBoxes, setShowBoundingBoxes] = useState(true);
   const [activeLineIndex, setActiveLineIndex] = useState(-1);
   const [hoveredLineIndex, setHoveredLineIndex] = useState(-1);
+
+  const [editorTab, setEditorTab] = useState("text");
+  const [selectedTableId, setSelectedTableId] = useState("");
+  const [tableGrid, setTableGrid] = useState([["", ""]]);
+
+  const activeTables = pageData?.ocr?.corrected_page_json_data?.tables 
+    || pageData?.ocr?.raw_page_json_data?.tables 
+    || {};
+
+  useEffect(() => {
+    const keys = Object.keys(activeTables);
+    if (keys.length > 0) {
+      if (!keys.includes(selectedTableId)) {
+        setSelectedTableId(keys[0]);
+      }
+    } else {
+      setSelectedTableId("");
+    }
+  }, [pageData]);
+
+  useEffect(() => {
+    if (selectedTableId && activeTables[selectedTableId]) {
+      const md = activeTables[selectedTableId].markdown || "";
+      setTableGrid(parseMarkdownTable(md));
+    } else {
+      setTableGrid([]);
+    }
+  }, [selectedTableId, pageData]);
 
   useEffect(() => {
     if (!keywordQuery.trim()) {
@@ -3704,6 +3462,7 @@ function ReadingDesk({
                 onClick={() => onSaveOcr({
                   ocr_page_json: rawOcrPath,
                   corrected_ocr_page_json: correctedOcrPath,
+                  tables: activeTables,
                 })}
                 disabled={!sourceReady || !pageReady || !text.trim()}
                 style={{ minHeight: "30px", height: "30px", display: "inline-flex", alignItems: "center", gap: "6px", padding: "0 10px", fontSize: "0.82rem" }}
@@ -3713,41 +3472,175 @@ function ReadingDesk({
             </div>
           </div>
 
-          {selectedHighlightText && (
-            <button className="highlightQuoteButton" type="button" onClick={handleHighlightSelection}>
-              <Highlighter size={15} /> Highlight selection
+          <div className="modeTabs" style={{ margin: "0 0 12px 0", borderBottom: "1px solid var(--border-color)", paddingBottom: 4 }}>
+            <button 
+              type="button" 
+              className={`tabButton ${editorTab === "text" ? "active" : ""}`} 
+              onClick={() => setEditorTab("text")}
+            >
+              Text Editor
             </button>
-          )}
-
-          {clickedHighlight && !selectedHighlightText && (
-            <button className="highlightQuoteButton" type="button" onClick={handleRemoveHighlight} style={{ background: "#904738" }}>
-              <X size={15} /> Remove highlight
+            <button 
+              type="button" 
+              className={`tabButton ${editorTab === "spreadsheet" ? "active" : ""}`} 
+              onClick={() => setEditorTab("spreadsheet")}
+            >
+              Spreadsheet ({Object.keys(activeTables).length})
             </button>
-          )}
+          </div>
 
-          <label className="deskField" style={{ flex: 1 }}>
-            <span>Editable OCR text (Highlight text to format as a highlight)</span>
-            <div className="ocrEditorContainer">
-              <div 
-                ref={backdropRef}
-                className="ocrEditorHighlightBackdrop"
-                dangerouslySetInnerHTML={{ __html: getHighlightedText() }}
-              />
-              <textarea
-                className="ocrEditor"
-                ref={textareaRef}
-                value={text}
-                onChange={(e) => handleTextChange(e.target.value)}
-                onKeyDown={handleKeyDown}
-                onSelect={handleTextareaSelect}
-                onKeyUp={handleTextareaSelect}
-                onMouseUp={handleTextareaSelect}
-                onScroll={handleTextareaScroll}
-                spellCheck="false"
-                style={{ minHeight: 480 }}
-              />
+          {editorTab === "text" ? (
+            <>
+              {selectedHighlightText && (
+                <button className="highlightQuoteButton" type="button" onClick={handleHighlightSelection}>
+                  <Highlighter size={15} /> Highlight selection
+                </button>
+              )}
+
+              {clickedHighlight && !selectedHighlightText && (
+                <button className="highlightQuoteButton" type="button" onClick={handleRemoveHighlight} style={{ background: "#904738" }}>
+                  <X size={15} /> Remove highlight
+                </button>
+              )}
+
+              <label className="deskField" style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+                <span>Editable OCR text (Highlight text to format as a highlight)</span>
+                <div className="ocrEditorContainer" style={{ flex: 1 }}>
+                  <div 
+                    ref={backdropRef}
+                    className="ocrEditorHighlightBackdrop"
+                    dangerouslySetInnerHTML={{ __html: getHighlightedText() }}
+                  />
+                  <textarea
+                    className="ocrEditor"
+                    ref={textareaRef}
+                    value={text}
+                    onChange={(e) => handleTextChange(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    onSelect={handleTextareaSelect}
+                    onKeyUp={handleTextareaSelect}
+                    onMouseUp={handleTextareaSelect}
+                    onScroll={handleTextareaScroll}
+                    spellCheck="false"
+                    style={{ minHeight: 480, flex: 1 }}
+                  />
+                </div>
+              </label>
+            </>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, flex: 1 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <label className="deskField" style={{ margin: 0, flex: 1 }}>
+                  <span>Select Table to Edit:</span>
+                  {Object.keys(activeTables).length === 0 ? (
+                    <select disabled style={{ background: "var(--bg-light)" }}><option>No tables detected on page</option></select>
+                  ) : (
+                    <select 
+                      value={selectedTableId} 
+                      onChange={(e) => setSelectedTableId(e.target.value)}
+                    >
+                      {Object.keys(activeTables).map(tid => (
+                        <option key={tid} value={tid}>{tid} (renders in markdown as [Table: {tid}])</option>
+                      ))}
+                    </select>
+                  )}
+                </label>
+                {selectedTableId && (
+                  <button 
+                    className="primaryButton"
+                    type="button"
+                    onClick={() => {
+                      const updatedTables = {
+                        ...activeTables,
+                        [selectedTableId]: {
+                          ...activeTables[selectedTableId],
+                          markdown: serializeMarkdownTable(tableGrid)
+                        }
+                      };
+                      onSaveOcr({
+                        ocr_page_json: rawOcrPath,
+                        corrected_ocr_page_json: correctedOcrPath,
+                        tables: updatedTables
+                      });
+                    }}
+                    style={{ minHeight: "36px", marginTop: "18px" }}
+                  >
+                    Save Table
+                  </button>
+                )}
+              </div>
+
+              {selectedTableId && tableGrid.length > 0 ? (
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button className="quietButton light" type="button" onClick={() => {
+                      const cols = tableGrid[0]?.length || 2;
+                      setTableGrid([...tableGrid, Array(cols).fill("")]);
+                    }}>+ Add Row</button>
+                    <button className="quietButton light" type="button" onClick={() => {
+                      if (tableGrid.length <= 1) return;
+                      setTableGrid(tableGrid.slice(0, -1));
+                    }}>- Delete Row</button>
+                    <button className="quietButton light" type="button" onClick={() => {
+                      setTableGrid(tableGrid.map(row => [...row, ""]));
+                    }}>+ Add Column</button>
+                    <button className="quietButton light" type="button" onClick={() => {
+                      if (tableGrid[0].length <= 1) return;
+                      setTableGrid(tableGrid.map(row => row.slice(0, -1)));
+                    }}>- Delete Column</button>
+                  </div>
+
+                  <div style={{ overflowX: "auto", border: "1px solid var(--border-color)", borderRadius: 6, background: "var(--bg-surface-elevated)" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 400 }}>
+                      <thead>
+                        <tr style={{ background: "var(--bg-light)", borderBottom: "2px solid var(--border-color)" }}>
+                          {tableGrid[0].map((cell, cIdx) => (
+                            <th key={cIdx} style={{ padding: 6, borderRight: "1px solid var(--border-color)" }}>
+                              <input 
+                                type="text" 
+                                value={cell} 
+                                onChange={(e) => {
+                                  const newGrid = [...tableGrid];
+                                  newGrid[0][cIdx] = e.target.value;
+                                  setTableGrid(newGrid);
+                                }}
+                                style={{ width: "100%", border: "none", background: "transparent", fontWeight: "bold", textAlign: "center", outline: "none" }}
+                                placeholder={`Col ${cIdx + 1}`}
+                              />
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {tableGrid.slice(1).map((row, rIdx) => (
+                          <tr key={rIdx} style={{ borderBottom: "1px solid var(--border-color)" }}>
+                            {row.map((cell, cIdx) => (
+                              <td key={cIdx} style={{ padding: 4, borderRight: "1px solid var(--border-color)" }}>
+                                <input 
+                                  type="text" 
+                                  value={cell} 
+                                  onChange={(e) => {
+                                    const newGrid = [...tableGrid];
+                                    newGrid[rIdx + 1][cIdx] = e.target.value;
+                                    setTableGrid(newGrid);
+                                  }}
+                                  style={{ width: "100%", border: "none", background: "transparent", outline: "none" }}
+                                />
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <div className="emptyState" style={{ padding: "40px 20px" }}>
+                  No table selected or no tables found. Use the text editor to manage layouts.
+                </div>
+              )}
             </div>
-          </label>
+          )}
 
           {sourceReady && pageReady && (
             <label className="deskField" style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
@@ -3826,32 +3719,7 @@ function isPositiveMessage(message) {
   return /saved|imported|selected|completed|review|generated|created|rendered|promoted/i.test(message || "");
 }
 
-function SummaryBlock({ summary, loading }) {
-  const counts = summary?.counts;
-  return (
-    <div className="summaryBlock">
-      {loading || !counts ? (
-        <span className="mutedOnDark">Loading evidence...</span>
-      ) : (
-        <>
-          <Metric label="Entities" value={counts.entities} />
-          <Metric label="Relations" value={counts.relationships} />
-          <Metric label="Attitudes" value={counts.attitudes} />
-          <Metric label="Quotes" value={counts.evidence_quotes} />
-        </>
-      )}
-    </div>
-  );
-}
 
-function Metric({ label, value }) {
-  return (
-    <div className="metric">
-      <strong>{value}</strong>
-      <span>{label}</span>
-    </div>
-  );
-}
 
 function TabButton({ active, icon, onClick, children }) {
   return (
@@ -3871,1636 +3739,38 @@ function PanelTitle({ icon, title }) {
   );
 }
 
-function isGeneratedOfficerRecord(record) {
-  return String(record?.entity_id || "").startsWith("officer_ent_")
-    || String(record?.relationship_id || "").startsWith("officer_rel_")
-    || String(record?.evidence_id || "").startsWith("officer_ev_");
-}
-
-function EntityTable({ entities, onOpenEntity, onEdit, onDelete }) {
-  return (
-    <div className="dataTableWrap">
-      <table className="dataTable">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Type</th>
-            <th>Aliases</th>
-            <th>Sources</th>
-            <th>Mentions</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {entities.map((entity) => {
-            const readOnly = isGeneratedOfficerRecord(entity);
-            return (
-              <tr key={entity.entity_id} onClick={() => onOpenEntity(entity.entity_id)}>
-                <td>
-                  <strong>{entity.canonical_name}</strong>
-                  <small>{entity.entity_id}</small>
-                </td>
-                <td>{entity.entity_type}</td>
-                <td>{entity.aliases?.join(", ")}</td>
-                <td>{entity.source_ids?.join(", ")}</td>
-                <td>{entity.mention_count}</td>
-                <td>
-                  {readOnly ? (
-                    <span className="readonlyPill">Generated</span>
-                  ) : (
-                    <div style={{ display: "flex", gap: "6px" }} onClick={(e) => e.stopPropagation()}>
-                      <button className="editButtonSpreadsheet" onClick={() => onEdit(entity)}>Edit</button>
-                      <button className="deleteButtonSpreadsheet" onClick={() => onDelete(entity)}>Delete</button>
-                    </div>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      {entities.length === 0 && <p className="muted">No matching entities.</p>}
-    </div>
-  );
-}
-
-function RelationshipTable({ claims, onOpenEvidence, onEdit, onDelete, onJumpToReadingDesk }) {
-  return (
-    <div className="dataTableWrap">
-      <table className="dataTable">
-        <thead>
-          <tr>
-            <th>Subject</th>
-            <th>Relation</th>
-            <th>Object</th>
-            <th>Source</th>
-            <th>Page</th>
-            <th>Confidence</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {claims.map((claim) => {
-            const readOnly = isGeneratedOfficerRecord(claim);
-            return (
-              <tr key={claim.relationship_id} onClick={() => onOpenEvidence(claim.evidence_id)}>
-                <td>{claim.subject_name}</td>
-                <td>{claim.relation_type}</td>
-                <td>{claim.object_name}</td>
-                <td>{claim.source_id}</td>
-                <td>{claim.page}</td>
-                <td>{claim.confidence}</td>
-                <td>
-                  <div style={{ display: "flex", gap: "6px" }} onClick={(e) => e.stopPropagation()}>
-                    {onJumpToReadingDesk && (
-                      <button className="editButtonSpreadsheet" onClick={() => onJumpToReadingDesk(claim.source_id, claim.page, claim.quote)}>Locate</button>
-                    )}
-                    {readOnly ? (
-                      <span className="readonlyPill">Generated</span>
-                    ) : (
-                      <>
-                        <button className="editButtonSpreadsheet" onClick={() => onEdit(claim)}>Edit</button>
-                        <button className="deleteButtonSpreadsheet" onClick={() => onDelete(claim)}>Delete</button>
-                      </>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      {claims.length === 0 && <p className="muted">No matching relationship claims.</p>}
-    </div>
-  );
-}
-
-function AttitudeTable({ claims, onOpenEvidence, onEdit, onDelete, onJumpToReadingDesk }) {
-  return (
-    <div className="dataTableWrap">
-      <table className="dataTable">
-        <thead>
-          <tr>
-            <th>Speaker</th>
-            <th>Attitude</th>
-            <th>Polarity</th>
-            <th>Target</th>
-            <th>Source</th>
-            <th>Page</th>
-            <th>Confidence</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {claims.map((claim) => (
-            <tr key={claim.attitude_id} onClick={() => onOpenEvidence(claim.evidence_id)}>
-              <td>{claim.speaker_name}</td>
-              <td>{claim.attitude_type}</td>
-              <td>
-                <span className={`polarity ${claim.polarity}`}>{claim.polarity}</span>
-              </td>
-              <td>{claim.target_name}</td>
-              <td>{claim.source_id}</td>
-              <td>{claim.page}</td>
-              <td>{claim.confidence}</td>
-              <td>
-                <div style={{ display: "flex", gap: "6px" }} onClick={(e) => e.stopPropagation()}>
-                  {onJumpToReadingDesk && (
-                    <button className="editButtonSpreadsheet" onClick={() => onJumpToReadingDesk(claim.source_id, claim.page, claim.quote)}>Locate</button>
-                  )}
-                  <button className="editButtonSpreadsheet" onClick={() => onEdit(claim)}>Edit</button>
-                  <button className="deleteButtonSpreadsheet" onClick={() => onDelete(claim)}>Delete</button>
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {claims.length === 0 && <p className="muted">No matching attitude claims.</p>}
-    </div>
-  );
-}
-
-function EntityDetail({ detail, onOpenEvidence, onJumpToReadingDesk }) {
-  if (!detail) {
-    return (
-      <section className="panel detailPanel">
-        <PanelTitle icon={<Database size={18} />} title="Entity Detail" />
-        <p className="muted">Select an entity to inspect mentions, relationships, attitudes, and evidence links.</p>
-      </section>
-    );
-  }
-  return (
-    <section className="panel detailPanel">
-      <PanelTitle icon={<Database size={18} />} title="Entity Detail" />
-      <h1>{detail.entity.canonical_name}</h1>
-      <p className="originalTitle">{detail.entity.entity_type}</p>
-      <div className="tags">
-        {detail.entity.aliases?.map((alias) => (
-          <span key={alias}>{alias}</span>
-        ))}
-      </div>
-      <h2>Mentions</h2>
-      <div className="stack">
-        {detail.mentions.map((mention) => (
-          <div key={mention.mention_id} style={{ display: "flex", gap: 6, alignItems: "stretch" }}>
-            <button className="rowButton" style={{ flex: 1 }} onClick={() => onOpenEvidence(mention.evidence_id)}>
-              <strong>"{mention.name_as_appears}"</strong>
-              {mention.quote && (
-                <blockquote style={{ fontSize: "0.82rem", margin: "6px 0", borderLeft: "2px solid #cfc7ba", paddingLeft: "8px", color: "var(--text-secondary)", textAlign: "left" }}>
-                  {mention.quote}
-                </blockquote>
-              )}
-              <span>
-                {mention.source_id}, page {mention.page}
-              </span>
-            </button>
-            {onJumpToReadingDesk && (
-              <button 
-                title="Locate Quote in Reading Desk"
-                onClick={() => onJumpToReadingDesk(mention.source_id, mention.page, mention.quote)}
-                style={{
-                  width: 36,
-                  border: "1px solid var(--border-color)",
-                  borderRadius: 6,
-                  background: "var(--bg-surface-elevated)",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "var(--color-primary, #284f54)"
-                }}
-              >
-                <BookOpen size={15} />
-              </button>
-            )}
-          </div>
-        ))}
-      </div>
-      <h2>Relationships</h2>
-      <div className="stack compact">
-        {detail.relationships.map((claim) => (
-          <div key={claim.relationship_id} style={{ display: "flex", gap: 6, alignItems: "stretch" }}>
-            <button className="rowButton" style={{ flex: 1 }} onClick={() => onOpenEvidence(claim.evidence_id)}>
-              <strong>{claim.relation_type}</strong>
-              <span>
-                {claim.source_id}, page {claim.page}
-              </span>
-            </button>
-            {onJumpToReadingDesk && (
-              <button 
-                title="Locate Quote in Reading Desk"
-                onClick={() => onJumpToReadingDesk(claim.source_id, claim.page, claim.quote)}
-                style={{
-                  width: 36,
-                  border: "1px solid var(--border-color)",
-                  borderRadius: 6,
-                  background: "var(--bg-surface-elevated)",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "var(--color-primary, #284f54)"
-                }}
-              >
-                <BookOpen size={15} />
-              </button>
-            )}
-          </div>
-        ))}
-      </div>
-      <h2>Attitudes</h2>
-      <div className="stack compact">
-        {detail.attitudes.map((claim) => (
-          <div key={claim.attitude_id} style={{ display: "flex", gap: 6, alignItems: "stretch" }}>
-            <button className="rowButton" style={{ flex: 1 }} onClick={() => onOpenEvidence(claim.evidence_id)}>
-              <strong>
-                {claim.attitude_type} - {claim.polarity}
-              </strong>
-              <span>
-                {claim.source_id}, page {claim.page}
-              </span>
-            </button>
-            {onJumpToReadingDesk && (
-              <button 
-                title="Locate Quote in Reading Desk"
-                onClick={() => onJumpToReadingDesk(claim.source_id, claim.page, claim.quote)}
-                style={{
-                  width: 36,
-                  border: "1px solid var(--border-color)",
-                  borderRadius: 6,
-                  background: "var(--bg-surface-elevated)",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "var(--color-primary, #284f54)"
-                }}
-              >
-                <BookOpen size={15} />
-              </button>
-            )}
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function EvidenceDrawer({ evidence, onClose, onJumpToReadingDesk }) {
-  return (
-    <aside className="evidenceDrawer" aria-label="Evidence detail">
-      <div className="drawerHeader">
-        <div>
-          <span className="eyebrow">Evidence</span>
-          <h2>{evidence.evidence_id}</h2>
-        </div>
-        <button className="iconButton" onClick={onClose} aria-label="Close evidence drawer">
-          <X size={18} />
-        </button>
-      </div>
-      <blockquote>{evidence.quote}</blockquote>
-      {onJumpToReadingDesk && (
-        <button 
-          className="primaryButton" 
-          onClick={() => onJumpToReadingDesk(evidence.source_id, evidence.page, evidence.quote)}
-          style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginBottom: 16 }}
-        >
-          <BookOpen size={16} />
-          Locate in Reading Desk
-        </button>
-      )}
-      <dl className="drawerMeta">
-        <div>
-          <dt>Source</dt>
-          <dd>{evidence.source_id}</dd>
-        </div>
-        <div>
-          <dt>Page</dt>
-          <dd>{evidence.page}</dd>
-        </div>
-        <div>
-          <dt>Status</dt>
-          <dd>{evidence.extraction_status}</dd>
-        </div>
-        <div>
-          <dt>OCR JSON</dt>
-          <dd>{evidence.ocr_page_json}</dd>
-        </div>
-        <div>
-          <dt>Local PDF</dt>
-          <dd>{evidence.source_pdf}</dd>
-        </div>
-        <div>
-          <dt>Note</dt>
-          <dd>{evidence.note || "-"}</dd>
-        </div>
-      </dl>
-    </aside>
-  );
-}
-
-function selectedTextOrFallback(text) {
-  const selected = window.getSelection?.().toString().trim();
-  if (selected) return selected;
-  return text.split("\n").find((line) => line.trim()) || text.slice(0, 240);
-}
-
-function uniqueValues(values) {
-  return [...new Set((values || []).filter(Boolean))];
-}
-
-function matchesQuery(value, query) {
-  if (!query.trim()) return true;
-  return JSON.stringify(value).toLowerCase().includes(query.trim().toLowerCase());
-}
-
-
-function EvidenceDesk({
-  sources,
-  initialSourceId,
-  onSourceChange,
-  allEntities,
-  onRefresh,
-  onSaveEvidence,
-  entityTypes,
-  setEntityTypes,
-  relationTypes,
-  setRelationTypes,
-  onJumpToReadingDesk,
-  onMergeTrigger,
-}) {
-  const [selectedSourceId, setSelectedSourceId] = useState(initialSourceId || "");
-  const [artifact, setArtifact] = useState(null);
-  const [activeQuote, setActiveQuote] = useState(null);
-  const [selectedText, setSelectedText] = useState("");
-  const [graphMessage, setGraphMessage] = useState("");
-
-  const handleLocateQuote = (quote) => {
-    setActiveQuote(quote);
-    setSelectedText("");
-    setSelectedNodeEntity(null);
-    setSelectedEdgeRelation(null);
-    setTimeout(() => {
-      document.getElementById(`quote_card_${quote.evidence_id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }, 100);
-  };
+function parseMarkdownTable(md) {
+  if (!md || !md.trim()) return [["", ""]];
+  const lines = md.trim().split("\n").map(l => l.trim()).filter(Boolean);
   
-  // Entity Approval States
-  const [entityModalOpen, setEntityModalOpen] = useState(false);
-  const [entityModalMode, setEntityModalMode] = useState("create"); // 'create' or 'link'
-  const [newEntity, setNewEntity] = useState({ canonical_name: "", name_original: "", entity_type: "person", aliasesString: "", notes: "" });
-  const [linkToEntityId, setLinkToEntityId] = useState("");
-  const [selectedEvidenceId, setSelectedEvidenceId] = useState("");
+  const parsed = lines.map(line => {
+    let parts = line.split("|");
+    if (parts.length > 1 && parts[0] === "") parts.shift();
+    if (parts.length > 0 && parts[parts.length - 1] === "") parts.pop();
+    return parts.map(cell => cell.trim());
+  });
 
-  // Graph state (Node coordinates map)
-  const [positions, setPositions] = useState({});
-  const [draggedNodeId, setDraggedNodeId] = useState(null);
-  const [drawingEdgeFromId, setDrawingEdgeFromId] = useState(null);
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const grid = parsed.filter(row => {
+    const isSeparator = row.every(cell => /^:?-+:?$/.test(cell));
+    return !isSeparator;
+  });
 
-  // Relationship Modal States
-  const [relModalOpen, setRelModalOpen] = useState(false);
-  const [newRel, setNewRel] = useState({ subject_id: "", object_id: "", relation_type: "spouse", note: "", confidence: "medium", evidence_id: "" });
+  if (grid.length === 0) return [["", ""]];
+  return grid;
+}
 
-  // Node editing state
-  const [selectedNodeEntity, setSelectedNodeEntity] = useState(null);
-  const [selectedEdgeRelation, setSelectedEdgeRelation] = useState(null);
-
-  useEffect(() => {
-    if (selectedSourceId) {
-      loadArtifact(selectedSourceId);
-    } else {
-      setArtifact(null);
-      setActiveQuote(null);
-    }
-  }, [selectedSourceId]);
-
-  async function loadArtifact(sourceId) {
-    setGraphMessage("");
-    try {
-      const art = await fetchJson(`/api/v1/evidence/source-graph/${sourceId}`);
-      const hasGeneratedOfficerRows = (art.relationship_claims || []).some((claim) => String(claim.relationship_id || "").startsWith("officer_rel_"))
-        || (art.evidence_quotes || []).some((quote) => String(quote.evidence_id || "").startsWith("officer_ev_"));
-      if (!hasGeneratedOfficerRows) {
-        try {
-          const editableArt = await fetchJson(`/api/v1/extraction-artifacts/${sourceId}`);
-          if (editableArt.extraction_schema_version === "evidence-graph-v1") {
-            setArtifact({ ...editableArt, read_only: false, data_source: "editable_json" });
-            setActiveQuote(null);
-            initializeGraphPositions(editableArt.entity_records || []);
-            return;
-          }
-        } catch {
-          // Keep the generated SQLite graph below.
-        }
-      }
-      setArtifact(art);
-      setActiveQuote(null);
-      initializeGraphPositions(art.entity_records || []);
-      if ((art.entity_records || []).length === 0 && (art.relationship_claims || []).length === 0 && (art.evidence_quotes || []).length === 0) {
-        setGraphMessage("No queryable evidence graph rows found for this source. Rebuild SQLite or check review status.");
-      }
-    } catch (err) {
-      try {
-        const art = await fetchJson(`/api/v1/extraction-artifacts/${sourceId}`);
-        setArtifact({ ...art, read_only: false, data_source: "editable_json" });
-        setActiveQuote(null);
-        initializeGraphPositions(art.entity_records || []);
-        setGraphMessage("Loaded editable JSON artifact because the generated SQLite graph was unavailable.");
-      } catch {
-        setArtifact(null);
-        setActiveQuote(null);
-        setPositions({});
-        setGraphMessage(`Unable to load graph for this source: ${err.message}`);
-      }
-    }
+function serializeMarkdownTable(grid) {
+  if (grid.length === 0) return "";
+  const lines = [];
+  
+  lines.push("| " + grid[0].map(c => c || " ").join(" | ") + " |");
+  lines.push("| " + grid[0].map(() => "---").join(" | ") + " |");
+  
+  for (let r = 1; r < grid.length; r++) {
+    lines.push("| " + grid[r].map(c => c || " ").join(" | ") + " |");
   }
-
-  function initializeGraphPositions(entities) {
-    const newPos = {};
-    entities.forEach((entity, idx) => {
-      const angle = (idx / (entities.length || 1)) * 2 * Math.PI;
-      newPos[entity.entity_id] = {
-        x: 250 + 150 * Math.cos(angle),
-        y: 200 + 120 * Math.sin(angle),
-      };
-    });
-    setPositions(newPos);
-  }
-
-  const handleDeleteQuote = async (evidenceId) => {
-    if (artifact?.read_only) {
-      alert("This graph is generated from SQLite/reviewed artifacts. Edit the source artifact or table review data, then rebuild the database.");
-      return;
-    }
-    const confirm = window.confirm("Are you sure you want to delete this quote? Any entity mentions, relationships, or claims linked to this quote will also be deleted.");
-    if (!confirm) return;
-    try {
-      const matchingQuote = quotes.find(q => q.evidence_id === evidenceId);
-      const targetSourceId = selectedSourceId === "project"
-        ? (matchingQuote?.source_id || sources[0]?.source_id)
-        : selectedSourceId;
-
-      await fetchJson(`/api/v1/evidence/quotes?evidence_id=${evidenceId}&source_id=${targetSourceId}`, {
-        method: "DELETE"
-      });
-      if (activeQuote?.evidence_id === evidenceId) {
-        setActiveQuote(null);
-        setSelectedText("");
-      }
-      await loadArtifact(selectedSourceId);
-      await onRefresh();
-    } catch (err) {
-      alert("Failed to delete quote: " + err.message);
-    }
-  };
-
-  // Handle highlighted text inside the quote text display
-  const handleQuoteTextSelect = (e) => {
-    const selected = window.getSelection().toString().trim();
-    if (selected) {
-      setSelectedText(selected);
-    }
-  };
-
-  const handleRecognizeAsEntity = () => {
-    if (artifact?.read_only) return;
-    if (!selectedText.trim()) return;
-    setNewEntity({
-      canonical_name: selectedText,
-      name_original: selectedText,
-      entity_type: "person",
-      aliasesString: "",
-      notes: ""
-    });
-    setLinkToEntityId("");
-    setSelectedEvidenceId(activeQuote?.evidence_id || "");
-    setEntityModalMode("create");
-    setEntityModalOpen(true);
-  };
-
-  const handleSaveEntityApproval = async () => {
-    try {
-      let entityId = "";
-      const matchingQuote = selectedEvidenceId ? quotes.find(q => q.evidence_id === selectedEvidenceId) : null;
-      const targetSourceId = selectedSourceId === "project"
-        ? (matchingQuote?.source_id || sources[0]?.source_id)
-        : selectedSourceId;
-
-      if (entityModalMode === "create") {
-        entityId = `ent_${Date.now()}`;
-        // Add entity to current artifact
-        await fetchJson("/api/v1/evidence/entities", {
-          method: "PUT",
-          body: JSON.stringify({
-            source_id: targetSourceId,
-            entity_id: entityId,
-            canonical_name: newEntity.canonical_name,
-            name_original: newEntity.name_original,
-            entity_type: newEntity.entity_type,
-            aliases: newEntity.aliasesString.split(",").map(a => a.trim()).filter(Boolean),
-            notes: newEntity.notes
-          })
-        });
-      } else {
-        entityId = linkToEntityId;
-        if (!entityId) return;
-      }
-
-      // Add Mention (Entity Mention) linking entity to selectedEvidenceId
-      if (selectedEvidenceId && matchingQuote) {
-        const mentionName = selectedText || newEntity.canonical_name || "Mention";
-        await fetchJson("/api/v1/evidence/mentions", {
-          method: "PUT",
-          body: JSON.stringify({
-            source_id: targetSourceId,
-            entity_id: entityId,
-            page: matchingQuote.page,
-            name_as_appears: mentionName,
-            evidence_id: matchingQuote.evidence_id,
-            confidence: "medium",
-            note: `Mention of ${mentionName} recognized from quote.`
-          })
-        });
-      }
-
-      setEntityModalOpen(false);
-      setSelectedText("");
-      await loadArtifact(selectedSourceId);
-      await onRefresh();
-    } catch (err) {
-      alert("Failed to approve entity: " + err.message);
-    }
-  };
-
-  // Dragging nodes handlers
-  const handleNodeMouseDown = (e, entityId) => {
-    e.stopPropagation();
-    if (artifact?.read_only) return;
-    if (e.shiftKey) {
-      // Draw edge start
-      setDrawingEdgeFromId(entityId);
-      const rect = e.currentTarget.ownerSVGElement.getBoundingClientRect();
-      setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-    } else {
-      setDraggedNodeId(entityId);
-    }
-  };
-
-  const handleCanvasMouseMove = (e) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    
-    if (draggedNodeId && positions[draggedNodeId]) {
-      setPositions({
-        ...positions,
-        [draggedNodeId]: { x, y }
-      });
-    } else if (drawingEdgeFromId) {
-      setMousePos({ x, y });
-    }
-  };
-
-  const handleCanvasMouseUp = () => {
-    setDraggedNodeId(null);
-    setDrawingEdgeFromId(null);
-  };
-
-  const handleNodeMouseUp = (e, entityId) => {
-    if (artifact?.read_only) return;
-    if (drawingEdgeFromId && drawingEdgeFromId !== entityId) {
-      // Connect nodes! Open Relationship Modal
-      setNewRel({
-        subject_id: drawingEdgeFromId,
-        object_id: entityId,
-        relation_type: "spouse",
-        note: "",
-        confidence: "medium",
-        evidence_id: activeQuote?.evidence_id || (quotes[0]?.evidence_id || "")
-      });
-      setRelModalOpen(true);
-    }
-    setDrawingEdgeFromId(null);
-  };
-
-  const handleSaveRelationship = async () => {
-    if (artifact?.read_only) {
-      alert("This graph is generated from SQLite/reviewed artifacts. Edit the source artifact or table review data, then rebuild the database.");
-      return;
-    }
-    if (!newRel.evidence_id) {
-      alert("Please select an evidence quote for this relationship.");
-      return;
-    }
-    const matchingQuote = quotes.find(q => q.evidence_id === newRel.evidence_id);
-    if (!matchingQuote) {
-      alert("Selected evidence quote not found.");
-      return;
-    }
-
-    try {
-      const subjectNode = nodes.find(n => n.entity_id === newRel.subject_id);
-      const objectNode = nodes.find(n => n.entity_id === newRel.object_id);
-      const targetSourceId = selectedSourceId === "project"
-        ? (matchingQuote?.source_id || sources[0]?.source_id)
-        : selectedSourceId;
-
-      await fetchJson("/api/v1/evidence/relationships", {
-        method: "PUT",
-        body: JSON.stringify({
-          source_id: targetSourceId,
-          relation_type: newRel.relation_type,
-          page: matchingQuote.page,
-          evidence_id: matchingQuote.evidence_id,
-          quote: matchingQuote.quote,
-          confidence: newRel.confidence,
-          note: newRel.note,
-          subject: {
-            entity_id: newRel.subject_id,
-            name: subjectNode?.canonical_name || "",
-            entity_type: subjectNode?.entity_type || "person"
-          },
-          object: {
-            entity_id: newRel.object_id,
-            name: objectNode?.canonical_name || "",
-            entity_type: objectNode?.entity_type || "person"
-          }
-        })
-      });
-      setRelModalOpen(false);
-      await loadArtifact(selectedSourceId);
-      await onRefresh();
-    } catch (err) {
-      alert("Failed to create relationship: " + err.message);
-    }
-  };
-
-  const handleUpdateNodeEntity = async () => {
-    if (artifact?.read_only) {
-      alert("This graph is generated from SQLite/reviewed artifacts. Edit the source artifact or table review data, then rebuild the database.");
-      return;
-    }
-    if (!selectedNodeEntity) return;
-    try {
-      const matchingMention = artifact?.entity_mentions?.find(m => m.entity_id === selectedNodeEntity.entity_id);
-      const targetSourceId = selectedSourceId === "project"
-        ? (matchingMention?.source_id || selectedNodeEntity.source_id || sources[0]?.source_id)
-        : selectedSourceId;
-
-      await fetchJson("/api/v1/evidence/entities", {
-        method: "PUT",
-        body: JSON.stringify({
-          source_id: targetSourceId,
-          ...selectedNodeEntity
-        })
-      });
-      setSelectedNodeEntity(null);
-      await loadArtifact(selectedSourceId);
-      await onRefresh();
-    } catch (err) {
-      alert("Failed to update entity: " + err.message);
-    }
-  };
-
-  const handleDeleteNodeEntity = async () => {
-    if (artifact?.read_only) {
-      alert("This graph is generated from SQLite/reviewed artifacts. Edit the source artifact or table review data, then rebuild the database.");
-      return;
-    }
-    if (!selectedNodeEntity) return;
-    const confirm = window.confirm("Delete this entity? Mentions and relationships using it will also be deleted.");
-    if (!confirm) return;
-    try {
-      const targetSourceId = selectedSourceId === "project" ? "" : selectedSourceId;
-      const query = targetSourceId ? `&source_id=${targetSourceId}` : "";
-      await fetchJson(`/api/v1/evidence/entities?entity_id=${selectedNodeEntity.entity_id}${query}`, {
-        method: "DELETE"
-      });
-      setSelectedNodeEntity(null);
-      await loadArtifact(selectedSourceId);
-      await onRefresh();
-    } catch (err) {
-      alert("Failed to delete entity: " + err.message);
-    }
-  };
-
-  const handleUpdateEdgeRelation = async () => {
-    if (artifact?.read_only) {
-      alert("This graph is generated from SQLite/reviewed artifacts. Edit the source artifact or table review data, then rebuild the database.");
-      return;
-    }
-    if (!selectedEdgeRelation) return;
-    try {
-      const subjectNode = nodes.find(n => n.entity_id === selectedEdgeRelation.subject_entity_id);
-      const objectNode = nodes.find(n => n.entity_id === selectedEdgeRelation.object_entity_id);
-      const targetSourceId = selectedSourceId === "project"
-        ? (selectedEdgeRelation.source_id || sources[0]?.source_id)
-        : selectedSourceId;
-
-      await fetchJson("/api/v1/evidence/relationships", {
-        method: "PUT",
-        body: JSON.stringify({
-          source_id: targetSourceId,
-          relationship_id: selectedEdgeRelation.relationship_id,
-          relation_type: selectedEdgeRelation.relation_type,
-          page: selectedEdgeRelation.page,
-          evidence_id: selectedEdgeRelation.evidence_id,
-          quote: selectedEdgeRelation.quote,
-          confidence: selectedEdgeRelation.confidence,
-          note: selectedEdgeRelation.note,
-          subject: {
-            entity_id: selectedEdgeRelation.subject_entity_id,
-            name: subjectNode?.canonical_name || "",
-            entity_type: subjectNode?.entity_type || "person"
-          },
-          object: {
-            entity_id: selectedEdgeRelation.object_entity_id,
-            name: objectNode?.canonical_name || "",
-            entity_type: objectNode?.entity_type || "person"
-          }
-        })
-      });
-      setSelectedEdgeRelation(null);
-      await loadArtifact(selectedSourceId);
-      await onRefresh();
-    } catch (err) {
-      alert("Failed to update relationship: " + err.message);
-    }
-  };
-
-  const handleDeleteEdgeRelation = async () => {
-    if (artifact?.read_only) {
-      alert("This graph is generated from SQLite/reviewed artifacts. Edit the source artifact or table review data, then rebuild the database.");
-      return;
-    }
-    if (!selectedEdgeRelation) return;
-    const confirmDelete = window.confirm("Are you sure you want to delete this relationship?");
-    if (!confirmDelete) return;
-
-    try {
-      const targetSourceId = selectedSourceId === "project"
-        ? (selectedEdgeRelation.source_id || sources[0]?.source_id)
-        : selectedSourceId;
-
-      await fetchJson(`/api/v1/evidence/relationships?relationship_id=${selectedEdgeRelation.relationship_id}&source_id=${targetSourceId}`, {
-        method: "DELETE"
-      });
-      setSelectedEdgeRelation(null);
-      await loadArtifact(selectedSourceId);
-      await onRefresh();
-    } catch (err) {
-      alert("Failed to delete relationship: " + err.message);
-    }
-  };
-
-  const nodes = artifact?.entity_records || [];
-  const edges = artifact?.relationship_claims || [];
-  const quotes = artifact?.evidence_quotes || [];
-  const graphReadOnly = Boolean(artifact?.read_only);
-  const selectedSource = sources.find(s => s.source_id === selectedSourceId);
-  const sourceTitle = selectedSource?.title_original || selectedSource?.title || selectedSourceId;
-
-  return (
-    <div className="evidenceDeskLayout">
-      <div className="quotesListPanel">
-        <label className="deskField">
-          <span>Active Source</span>
-          <select value={selectedSourceId} onChange={(e) => {
-            setSelectedSourceId(e.target.value);
-            onSourceChange(e.target.value);
-          }}>
-            <option value="">Choose a source</option>
-            <option value="project">Project View (All Sources)</option>
-            {sources.map((s) => (
-              <option key={s.source_id} value={s.source_id}>
-                {s.title_original || s.title} ({s.source_id})
-              </option>
-            ))}
-          </select>
-        </label>
-        {selectedSourceId && (
-          <>
-            {graphReadOnly && (
-              <div className="warningBanner" style={{ marginBottom: 12 }}>
-                Generated from SQLite/reviewed artifacts. Edit the source artifact or table review data, then rebuild the database.
-              </div>
-            )}
-            {graphMessage && (
-              <div className="emptyState" style={{ marginBottom: 12 }}>
-                {graphMessage}
-              </div>
-            )}
-            {activeQuote && (
-              <div className="quoteViewerContainer" style={{ marginBottom: 16 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                  <h4 style={{ margin: 0 }}>Quote Viewer (Highlight text to extract entity)</h4>
-                  {!graphReadOnly && (
-                    <button 
-                      className="quietButton light dangerButton" 
-                      onClick={() => handleDeleteQuote(activeQuote.evidence_id)}
-                      style={{ padding: "4px 8px", fontSize: "0.8rem", height: "auto" }}
-                    >
-                      Delete Quote
-                    </button>
-                  )}
-                </div>
-                <div className="quoteTextDisplay" onMouseUp={handleQuoteTextSelect}>
-                  {activeQuote.quote}
-                </div>
-                {selectedText && !graphReadOnly && (
-                  <button className="primaryButton" onClick={handleRecognizeAsEntity}>
-                    Recognize "{selectedText}" as Entity
-                  </button>
-                )}
-              </div>
-            )}
-
-            <h3>Saved Quotes ({quotes.length})</h3>
-            <div className="quotesStack" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {quotes.map((q) => (
-                <div 
-                  id={`quote_card_${q.evidence_id}`}
-                  key={q.evidence_id} 
-                  className={`quoteCard ${activeQuote?.evidence_id === q.evidence_id ? "active" : ""}`}
-                  onClick={() => {
-                    setActiveQuote(q);
-                    setSelectedText("");
-                  }}
-                >
-                  <div className="quoteCardHeader">
-                    <span>{sourceTitle} ({q.evidence_id.split('_').pop().toUpperCase()})</span>
-                    <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                      <span>Page {q.page}</span>
-                      {onJumpToReadingDesk && (
-                        <button
-                          title="Open Page in Reading Desk"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onJumpToReadingDesk(selectedSourceId, q.page);
-                          }}
-                          style={{
-                            background: "transparent",
-                            border: "none",
-                            color: "#284f54",
-                            cursor: "pointer",
-                            padding: "2px 4px",
-                            display: "flex",
-                            alignItems: "center"
-                          }}
-                        >
-                          <BookOpen size={13} />
-                        </button>
-                      )}
-                      {!graphReadOnly && (
-                        <button
-                          title="Delete Quote"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteQuote(q.evidence_id);
-                          }}
-                          style={{
-                            background: "transparent",
-                            border: "none",
-                            color: "#ef4444",
-                            cursor: "pointer",
-                            padding: "2px 4px",
-                            display: "flex",
-                            alignItems: "center"
-                          }}
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <div className="quoteCardBody">{q.quote}</div>
-                </div>
-              ))}
-              {quotes.length === 0 && <p className="muted">No evidence quotes saved for this source yet.</p>}
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* Right panel: SVG Interactive Graph Canvas */}
-      <div className="panel svgGraphPanel">
-        <div className="svgGraphHeader">
-          <div>
-            <h3>Evidence Graph Workspace</h3>
-            <div className="graphInstructions">
-              {graphReadOnly
-                ? "Generated graph view is read-only. Select nodes or edges to inspect evidence and provenance."
-                : "Shift+Drag from a node to another to create relationship. Double-click canvas to create new node."}
-            </div>
-          </div>
-        </div>
-
-        {selectedSourceId ? (
-          <div className="svgGraphWrapper">
-            <svg 
-              className="svgGraphCanvas"
-              onMouseMove={handleCanvasMouseMove}
-              onMouseUp={handleCanvasMouseUp}
-              onDoubleClick={async (e) => {
-                if (graphReadOnly) return;
-                if (e.target === e.currentTarget) {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const x = e.clientX - rect.left;
-                  const y = e.clientY - rect.top;
-                  const newId = `ent_${Date.now()}`;
-                  
-                  // Open modal for new entity creation
-                  setNewEntity({ canonical_name: "New Entity", name_original: "New Entity", entity_type: "person", aliasesString: "", notes: "" });
-                  setSelectedEvidenceId(activeQuote?.evidence_id || "");
-                  setEntityModalMode("create");
-                  setEntityModalOpen(true);
-                  
-                  // Temporarily place coordinate
-                  setPositions({ ...positions, [newId]: { x, y } });
-                }
-              }}
-            >
-              <defs>
-                <marker id="arrow" viewBox="0 0 10 10" refX="17" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#5c686a" />
-                </marker>
-              </defs>
-
-              {/* Edge claims */}
-              {edges.map((edge) => {
-                const subPos = positions[edge.subject_entity_id];
-                const objPos = positions[edge.object_entity_id];
-                if (!subPos || !objPos) return null;
-
-                const dx = objPos.x - subPos.x;
-                const dy = objPos.y - subPos.y;
-                const midX = (subPos.x + objPos.x) / 2;
-                const midY = (subPos.y + objPos.y) / 2;
-
-                return (
-                  <g 
-                    key={edge.relationship_id}
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => setSelectedEdgeRelation(edge)}
-                  >
-                    <line 
-                      x1={subPos.x} 
-                      y1={subPos.y} 
-                      x2={objPos.x} 
-                      y2={objPos.y} 
-                      className="graphEdge"
-                      markerEnd="url(#arrow)"
-                    />
-                    <text 
-                      x={midX} 
-                      y={midY - 8} 
-                      className="edgeLabel"
-                      textAnchor="middle"
-                    >
-                      {edge.relation_type}
-                    </text>
-                  </g>
-                );
-              })}
-
-              {/* Drawing temporary Edge claim */}
-              {drawingEdgeFromId && positions[drawingEdgeFromId] && (
-                <line 
-                  x1={positions[drawingEdgeFromId].x} 
-                  y1={positions[drawingEdgeFromId].y} 
-                  x2={mousePos.x} 
-                  y2={mousePos.y} 
-                  style={{ stroke: "#7d3d2f", strokeWidth: 2, strokeDasharray: "4 4" }}
-                />
-              )}
-
-              {/* Nodes */}
-              {nodes.map((node) => {
-                const pos = positions[node.entity_id] || { x: 100, y: 100 };
-                const nodeColors = { person: "#ffd700", place: "#90ee90", organization: "#add8e6" };
-                const fill = nodeColors[node.entity_type] || "#ffffff";
-
-                return (
-                  <g 
-                    key={node.entity_id}
-                    transform={`translate(${pos.x}, ${pos.y})`}
-                    className="graphNode"
-                    onMouseDown={(e) => handleNodeMouseDown(e, node.entity_id)}
-                    onMouseUp={(e) => handleNodeMouseUp(e, node.entity_id)}
-                    onClick={() => {
-                      setSelectedNodeEntity({
-                        ...node,
-                        aliasesString: node.aliases?.join(", ") || ""
-                      });
-                    }}
-                  >
-                    <circle 
-                      r="16" 
-                      fill={fill} 
-                      stroke="#394649" 
-                      strokeWidth="1.5"
-                    />
-                    <text 
-                      y="26" 
-                      className="nodeText"
-                    >
-                      {node.canonical_name}
-                    </text>
-                    {/* Small dragging handle handle */}
-                    <circle 
-                      cx="12" 
-                      cy="-12" 
-                      r="4" 
-                      className="nodeHandle"
-                    >
-                      <title>Shift+Drag to connect</title>
-                    </circle>
-                  </g>
-                );
-              })}
-            </svg>
-          </div>
-        ) : (
-          <div className="emptyState">Select a source project on the left to activate workspace.</div>
-        )}
-      </div>
-
-      {/* Entity modal (create/link) */}
-      {entityModalOpen && (
-        <div className="customModalOverlay">
-          <div className="customModal">
-            <h3 className="customModalTitle">Approve Entity Mention</h3>
-            <div className="editorToolbar" style={{ marginBottom: 12 }}>
-              <button 
-                className={`quietButton light ${entityModalMode === "create" ? "active" : ""}`}
-                onClick={() => setEntityModalMode("create")}
-              >
-                Create New Entity
-              </button>
-              <button 
-                className={`quietButton light ${entityModalMode === "link" ? "active" : ""}`}
-                onClick={() => setEntityModalMode("link")}
-              >
-                Link to Existing Entity
-              </button>
-            </div>
-
-            {entityModalMode === "create" ? (
-              <div className="customModalBody">
-                <label className="deskField">
-                  <span>Canonical Name</span>
-                  <input 
-                    type="text" 
-                    value={newEntity.canonical_name}
-                    onChange={(e) => setNewEntity({ ...newEntity, canonical_name: e.target.value })}
-                  />
-                </label>
-                <CategorySelector
-                  label="Type"
-                  value={newEntity.entity_type}
-                  onChange={(val) => setNewEntity({ ...newEntity, entity_type: val })}
-                  types={entityTypes}
-                  setTypes={setEntityTypes}
-                  isEntity={true}
-                />
-                <label className="deskField">
-                  <span>Aliases (comma separated)</span>
-                  <input 
-                    type="text" 
-                    value={newEntity.aliasesString}
-                    onChange={(e) => setNewEntity({ ...newEntity, aliasesString: e.target.value })}
-                  />
-                </label>
-              </div>
-            ) : (
-              <div className="customModalBody">
-                <label className="deskField">
-                  <span>Select Entity</span>
-                  <select 
-                    value={linkToEntityId}
-                    onChange={(e) => setLinkToEntityId(e.target.value)}
-                  >
-                    <option value="">Choose entity...</option>
-                    {nodes.map(n => (
-                      <option key={n.entity_id} value={n.entity_id}>
-                        {n.canonical_name} ({n.entity_type})
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-            )}
-
-            {/* Evidence Selector Dropdown */}
-            <div className="customModalBody" style={{ marginTop: 12, borderTop: "1px solid #eee", paddingTop: 12 }}>
-              <label className="deskField">
-                <span>Evidence Quote</span>
-                <select 
-                  value={selectedEvidenceId}
-                  onChange={(e) => setSelectedEvidenceId(e.target.value)}
-                  title={quotes.find(q => q.evidence_id === selectedEvidenceId)?.quote || "No quote selected"}
-                >
-                  <option value="">No Evidence (Do not create mention)</option>
-                  {quotes.map(q => (
-                    <option key={q.evidence_id} value={q.evidence_id} title={q.quote}>
-                      {sourceTitle} - Page {q.page} ({q.evidence_id.split('_').pop().toUpperCase()}): {q.quote.length > 60 ? q.quote.substring(0, 60) + "..." : q.quote}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <div className="customModalActions">
-              <button className="quietButton light" onClick={() => setEntityModalOpen(false)}>Cancel</button>
-              <button className="primaryButton" onClick={handleSaveEntityApproval}>Approve mention</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Relationship Modal */}
-      {relModalOpen && (
-        <div className="customModalOverlay">
-          <div className="customModal">
-            <h3 className="customModalTitle">Create Relationship</h3>
-            <div className="customModalBody">
-              <CategorySelector
-                label="Relation Type"
-                value={newRel.relation_type || "spouse"}
-                onChange={(val) => setNewRel({ ...newRel, relation_type: val })}
-                types={relationTypes}
-                setTypes={setRelationTypes}
-                isEntity={false}
-              />
-              <label className="deskField">
-                <span>Confidence</span>
-                <select 
-                  value={newRel.confidence} 
-                  onChange={(e) => setNewRel({ ...newRel, confidence: e.target.value })}
-                >
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
-                </select>
-              </label>
-              <label className="deskField">
-                <span>Evidence Quote</span>
-                <select 
-                  value={newRel.evidence_id || ""} 
-                  onChange={(e) => setNewRel({ ...newRel, evidence_id: e.target.value })}
-                  title={quotes.find(q => q.evidence_id === newRel.evidence_id)?.quote || "No quote selected"}
-                >
-                  <option value="">Select a quote...</option>
-                  {quotes.map(q => (
-                    <option key={q.evidence_id} value={q.evidence_id} title={q.quote}>
-                      {sourceTitle} - Page {q.page} ({q.evidence_id.split('_').pop().toUpperCase()}): {q.quote.length > 60 ? q.quote.substring(0, 60) + "..." : q.quote}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="deskField">
-                <span>Note</span>
-                <textarea 
-                  value={newRel.note} 
-                  onChange={(e) => setNewRel({ ...newRel, note: e.target.value })}
-                />
-              </label>
-            </div>
-            <div className="customModalActions">
-              <button className="quietButton light" onClick={() => setRelModalOpen(false)}>Cancel</button>
-              <button className="primaryButton" onClick={handleSaveRelationship}>Create Edge</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Selected Node Inspector / Editor */}
-      {selectedNodeEntity && (
-        <div className="customModalOverlay">
-          <div className="customModal">
-            <h3 className="customModalTitle">Inspect / Edit Node Entity</h3>
-            <div className="customModalBody">
-              <label className="deskField">
-                <span>Canonical Name</span>
-                <input 
-                  type="text" 
-                  value={selectedNodeEntity.canonical_name || ""} 
-                  onChange={(e) => setSelectedNodeEntity({ ...selectedNodeEntity, canonical_name: e.target.value })}
-                />
-              </label>
-              <label className="deskField">
-                <span>Name (Original)</span>
-                <input 
-                  type="text" 
-                  value={selectedNodeEntity.name_original || ""} 
-                  onChange={(e) => setSelectedNodeEntity({ ...selectedNodeEntity, name_original: e.target.value })}
-                />
-              </label>
-              <CategorySelector
-                label="Type"
-                value={selectedNodeEntity.entity_type || "person"}
-                onChange={(val) => setSelectedNodeEntity({ ...selectedNodeEntity, entity_type: val })}
-                types={entityTypes}
-                setTypes={setEntityTypes}
-                isEntity={true}
-              />
-              <label className="deskField">
-                <span>Aliases (comma separated)</span>
-                <input 
-                  type="text" 
-                  value={selectedNodeEntity.aliasesString || ""} 
-                  onChange={(e) => setSelectedNodeEntity({ ...selectedNodeEntity, aliasesString: e.target.value })}
-                />
-              </label>
-              <label className="deskField">
-                <span>Notes</span>
-                <textarea 
-                  value={selectedNodeEntity.notes || ""} 
-                  onChange={(e) => setSelectedNodeEntity({ ...selectedNodeEntity, notes: e.target.value })}
-                />
-              </label>
-              <div className="deskField">
-                <span>Linked Evidence Quotes</span>
-                <div className="inspectorQuotesList" style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid #ccc', padding: 8, borderRadius: 4, background: '#f9f9f9', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {(() => {
-                    const mentionsForNode = (artifact?.entity_mentions || []).filter(m => m.entity_id === selectedNodeEntity.entity_id);
-                    if (mentionsForNode.length === 0) {
-                      return <span style={{ color: '#666', fontStyle: 'italic' }}>No linked evidence quotes.</span>;
-                    }
-                    return mentionsForNode.map(mention => {
-                      const matchingQuote = quotes.find(q => q.evidence_id === mention.evidence_id);
-                      if (!matchingQuote) return null;
-                      return (
-                        <div key={mention.mention_id} style={{ fontSize: '0.9rem', borderBottom: '1px solid #eee', paddingBottom: 6 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', color: '#666', marginBottom: 2 }}>
-                            <strong>{selectedSourceId === "project" ? `${matchingQuote.source_id} · ` : ""}Page {matchingQuote.page}</strong>
-                            <div style={{ display: "flex", gap: "6px" }}>
-                              <button
-                                type="button"
-                                onClick={() => handleLocateQuote(matchingQuote)}
-                                style={{
-                                  background: "#eef3f1",
-                                  border: "1px solid #cbdad6",
-                                  color: "#284f54",
-                                  borderRadius: "4px",
-                                  padding: "2px 6px",
-                                  fontSize: "0.75rem",
-                                  cursor: "pointer",
-                                  display: "inline-flex",
-                                  alignItems: "center"
-                                }}
-                              >
-                                Locate Quote
-                              </button>
-                              {onJumpToReadingDesk && (
-                                <button
-                                  type="button"
-                                  onClick={() => onJumpToReadingDesk(matchingQuote.source_id, matchingQuote.page)}
-                                  style={{
-                                    background: "#eef3f1",
-                                    border: "1px solid #cbdad6",
-                                    color: "#284f54",
-                                    borderRadius: "4px",
-                                    padding: "2px 6px",
-                                    fontSize: "0.75rem",
-                                    cursor: "pointer",
-                                    display: "inline-flex",
-                                    alignItems: "center"
-                                  }}
-                                >
-                                  Locate in Reading Desk
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                          <div style={{ fontStyle: 'italic', color: '#333' }}>"{matchingQuote.quote}"</div>
-                        </div>
-                      );
-                    });
-                  })()}
-                </div>
-              </div>
-            </div>
-            <div className="customModalActions">
-              {!graphReadOnly && <button className="quietButton light deleteButton" onClick={handleDeleteNodeEntity}>Delete Node</button>}
-              {!graphReadOnly && onMergeTrigger && (
-                <button 
-                  className="quietButton light" 
-                  style={{ color: "var(--color-primary, #284f54)", borderColor: "var(--color-primary, #284f54)" }}
-                  onClick={() => {
-                    onMergeTrigger(selectedNodeEntity.entity_id);
-                    setSelectedNodeEntity(null);
-                  }}
-                >
-                  Merge...
-                </button>
-              )}
-              <div style={{ flex: 1 }}></div>
-              <button className="quietButton light" onClick={() => setSelectedNodeEntity(null)}>Cancel</button>
-              {!graphReadOnly && <button className="primaryButton" onClick={handleUpdateNodeEntity}>Save Node</button>}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Selected Edge Inspector / Editor */}
-      {selectedEdgeRelation && (
-        <div className="customModalOverlay">
-          <div className="customModal">
-            <h3 className="customModalTitle">Inspect Edge Relationship</h3>
-            <div className="customModalBody">
-              <label className="deskField">
-                <span>Subject Entity</span>
-                <input 
-                  type="text" 
-                  value={nodes.find(n => n.entity_id === selectedEdgeRelation.subject_entity_id)?.canonical_name || selectedEdgeRelation.subject_entity_id} 
-                  disabled 
-                />
-              </label>
-              <label className="deskField">
-                <span>Object Entity</span>
-                <input 
-                  type="text" 
-                  value={nodes.find(n => n.entity_id === selectedEdgeRelation.object_entity_id)?.canonical_name || selectedEdgeRelation.object_entity_id} 
-                  disabled 
-                />
-              </label>
-              
-              <CategorySelector
-                label="Relationship Type"
-                value={selectedEdgeRelation.relation_type || ""}
-                onChange={(val) => setSelectedEdgeRelation({ ...selectedEdgeRelation, relation_type: val })}
-                types={relationTypes}
-                setTypes={setRelationTypes}
-                isEntity={false}
-              />
-              
-              <label className="deskField">
-                <span>Confidence</span>
-                <select 
-                  value={selectedEdgeRelation.confidence || "medium"}
-                  onChange={(e) => setSelectedEdgeRelation({ ...selectedEdgeRelation, confidence: e.target.value })}
-                >
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
-                </select>
-              </label>
-              <label className="deskField">
-                <span>Notes</span>
-                <textarea 
-                  value={selectedEdgeRelation.note || ""} 
-                  onChange={(e) => setSelectedEdgeRelation({ ...selectedEdgeRelation, note: e.target.value })}
-                />
-              </label>
-
-              <label className="deskField">
-                <span>Evidence Quote</span>
-                <div style={{ padding: 8, border: '1px solid #ccc', borderRadius: 4, background: '#f9f9f9' }}>
-                  {(() => {
-                    const matchingQuote = quotes.find(q => q.evidence_id === selectedEdgeRelation.evidence_id);
-                    if (!matchingQuote) {
-                      return <span style={{ color: '#666', fontStyle: 'italic' }}>No linked evidence quote found ({selectedEdgeRelation.evidence_id}).</span>;
-                    }
-                     return (
-                      <div style={{ fontSize: '0.9rem' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', color: '#666', marginBottom: 2 }}>
-                          <strong>{selectedSourceId === "project" ? `${matchingQuote.source_id} · ` : ""}Page {matchingQuote.page}</strong>
-                          <div style={{ display: "flex", gap: "6px" }}>
-                            <button
-                              type="button"
-                              onClick={() => handleLocateQuote(matchingQuote)}
-                              style={{
-                                background: "#eef3f1",
-                                border: "1px solid #cbdad6",
-                                color: "#284f54",
-                                borderRadius: "4px",
-                                padding: "2px 6px",
-                                fontSize: "0.75rem",
-                                cursor: "pointer",
-                                display: "inline-flex",
-                                alignItems: "center"
-                              }}
-                            >
-                              Locate Quote
-                            </button>
-                            {onJumpToReadingDesk && (
-                              <button
-                                type="button"
-                                onClick={() => onJumpToReadingDesk(matchingQuote.source_id, matchingQuote.page)}
-                                style={{
-                                  background: "#eef3f1",
-                                  border: "1px solid #cbdad6",
-                                  color: "#284f54",
-                                  borderRadius: "4px",
-                                  padding: "2px 6px",
-                                  fontSize: "0.75rem",
-                                  cursor: "pointer",
-                                  display: "inline-flex",
-                                  alignItems: "center"
-                                }}
-                              >
-                                Locate in Reading Desk
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                        <div style={{ fontStyle: 'italic', color: '#333' }}>"{matchingQuote.quote}"</div>
-                      </div>
-                     );
-                  })()}
-                </div>
-              </label>
-            </div>
-            
-            <div className="customModalActions">
-              {!graphReadOnly && <button className="quietButton light deleteButton" onClick={handleDeleteEdgeRelation}>Delete Edge</button>}
-              <div style={{ flex: 1 }}></div>
-              <button className="quietButton light" onClick={() => setSelectedEdgeRelation(null)}>Cancel</button>
-              {!graphReadOnly && <button className="primaryButton" onClick={handleUpdateEdgeRelation}>Save Edge</button>}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+  
+  return lines.join("\n");
 }
-
-function CategorySelector({ label, value, onChange, types, setTypes, isEntity }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const inputId = useMemo(() => `new_type_input_${Math.random().toString(36).substr(2, 9)}`, []);
-
-  const handleAdd = () => {
-    const input = document.getElementById(inputId) as HTMLInputElement | null;
-    const val = input?.value.trim().toLowerCase();
-    if (val && !types.includes(val)) {
-      setTypes([...types, val]);
-      input.value = "";
-    }
-  };
-
-  return (
-    <div style={{ marginBottom: 12 }}>
-      <label className="deskField" style={{ marginBottom: 4 }}>
-        <span>{label}</span>
-        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-          <select 
-            value={value || ""}
-            onChange={(e) => onChange(e.target.value)}
-            style={{ flex: 1 }}
-          >
-            {types.map(t => (
-              <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
-            ))}
-          </select>
-          <button 
-            type="button" 
-            className="quietButton light" 
-            onClick={() => setIsOpen(!isOpen)}
-            style={{ padding: "4px 8px", fontSize: "0.8rem", height: "auto" }}
-          >
-            Manage
-          </button>
-        </div>
-      </label>
-      {isOpen && (
-        <div className="manageTypesBox" style={{ background: "var(--bg-surface-elevated, #f9f9f9)", padding: 10, borderRadius: 6, border: "1px solid var(--border-color)", marginTop: 6 }}>
-          <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-            <input 
-              type="text" 
-              id={inputId} 
-              placeholder="Add new category..." 
-              style={{ flex: 1, padding: "4px 8px", fontSize: 12, border: "1px solid var(--border-color)", borderRadius: 4, background: "var(--bg-surface, #fff)", color: "var(--text-primary)" }} 
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  handleAdd();
-                }
-              }}
-            />
-            <button 
-              type="button" 
-              className="primaryButton" 
-              style={{ padding: "4px 10px", fontSize: 12, height: "auto" }}
-              onClick={handleAdd}
-            >
-              Add
-            </button>
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-            {types.map(t => (
-              <span key={t} className="typeTag" style={{ background: "var(--bg-surface-elevated, #e2e8f0)", border: "1px solid var(--border-color)", padding: "2px 6px", borderRadius: 4, fontSize: 11, display: "flex", alignItems: "center", gap: 4, color: "var(--text-primary)" }}>
-                {t}
-                {(!isEntity || (t !== "person" && t !== "place" && t !== "organization")) && 
-                 (isEntity || t !== "spouse") && (
-                  <span 
-                    style={{ cursor: "pointer", color: "#ef4444", fontWeight: "bold" }} 
-                    onClick={() => setTypes(types.filter(x => x !== t))}
-                  >
-                    ×
-                  </span>
-                )}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-
-function MergeEntitiesModal({ isOpen, onClose, entities, onMerge, initialTargetId = "" }) {
-  const [targetId, setTargetId] = useState(initialTargetId);
-  const [selectedSourceIds, setSelectedSourceIds] = useState([]);
-
-  useEffect(() => {
-    if (isOpen) {
-      setTargetId(initialTargetId);
-      setSelectedSourceIds([]);
-    }
-  }, [isOpen, initialTargetId]);
-
-  if (!isOpen) return null;
-
-  // Filter out the target entity from candidate source entities
-  const candidateSources = entities.filter(e => e.entity_id !== targetId);
-
-  const handleCheckboxChange = (entityId, checked) => {
-    if (checked) {
-      setSelectedSourceIds([...selectedSourceIds, entityId]);
-    } else {
-      setSelectedSourceIds(selectedSourceIds.filter(id => id !== entityId));
-    }
-  };
-
-  const handleSubmit = () => {
-    if (!targetId) {
-      alert("Please select a target entity.");
-      return;
-    }
-    if (selectedSourceIds.length === 0) {
-      alert("Please select at least one entity to merge.");
-      return;
-    }
-    onMerge(targetId, selectedSourceIds);
-  };
-
-  return (
-    <div className="customModalOverlay">
-      <div className="customModal" style={{ maxWidth: 500 }}>
-        <h3 className="customModalTitle">Merge Entities</h3>
-        <div className="customModalBody">
-          <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: 16 }}>
-            Select the primary entity name. All other selected entities will be merged into it, and their names and aliases will become aliases of the primary entity. The merged entity will inherit all mentions, relationships, and attitude claims.
-          </p>
-          
-          <label className="deskField">
-            <span>Primary Entity (Surviving Node)</span>
-            <select value={targetId} onChange={(e) => {
-              setTargetId(e.target.value);
-              setSelectedSourceIds([]);
-            }}>
-              <option value="">Select primary entity...</option>
-              {entities.map(e => (
-                <option key={e.entity_id} value={e.entity_id}>
-                  {e.canonical_name} ({e.entity_type}) - {e.entity_id}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          {targetId && (
-            <div className="deskField" style={{ marginTop: 12 }}>
-              <span>Select Entities to Merge (Other Nodes to Combine)</span>
-              <div style={{ maxHeight: 200, overflowY: "auto", border: "1px solid var(--border-color)", borderRadius: 4, padding: 8, background: "var(--bg-surface-elevated)" }}>
-                {candidateSources.map(e => (
-                  <label key={e.entity_id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", cursor: "pointer", fontSize: "0.9rem" }}>
-                    <input 
-                      type="checkbox" 
-                      checked={selectedSourceIds.includes(e.entity_id)}
-                      onChange={(evt) => handleCheckboxChange(e.entity_id, evt.target.checked)}
-                    />
-                    <span>{e.canonical_name} ({e.entity_type}) - <small>{e.entity_id}</small></span>
-                  </label>
-                ))}
-                {candidateSources.length === 0 && (
-                  <span style={{ color: "var(--text-secondary)", fontStyle: "italic" }}>No other entities available to merge.</span>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-        <div className="customModalActions">
-          <button className="quietButton light" onClick={onClose}>Cancel</button>
-          <button className="primaryButton" onClick={handleSubmit} disabled={!targetId || selectedSourceIds.length === 0}>Merge Nodes</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 
 export default Workbench;

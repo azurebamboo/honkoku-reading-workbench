@@ -741,8 +741,9 @@ async def save_officer_table_extraction(source_id: str, page: int, request: Requ
 
     write_json(artifact_path, artifact)
     try:
-        run_workspace_script("validate_extractions.py")
-        run_workspace_script("build_database.py")
+        # run_workspace_script("validate_extractions.py")
+        # run_workspace_script("build_database.py")
+        pass
     except HTTPException:
         raise
     return {
@@ -785,6 +786,18 @@ def reading_source_export_text(source_id: str) -> dict[str, Any]:
                     pass
                     
         effective_text = corrected_text or raw_text
+        
+        tables = (corrected_page_json or {}).get("tables") or (raw_page_json or {}).get("tables") or {}
+        if tables:
+            import re
+            def replace_table_placeholder(match) -> str:
+                table_id = match.group(1)
+                if table_id in tables and isinstance(tables[table_id], dict):
+                    md = tables[table_id].get("markdown", "")
+                    return f"\n\n{md.strip()}\n\n"
+                return match.group(0)
+            effective_text = re.sub(r"\[Table:\s*([a-zA-Z0-9_]+)\]", replace_table_placeholder, effective_text)
+
         pages_text.append({
             "page": page,
             "text": effective_text
@@ -1088,6 +1101,7 @@ async def save_ocr_review(source_id: str, page: int, request: Request) -> dict[s
     corrected_page_json = {
         "contents": [contents_list],
         "imginfo": raw_page_json.get("imginfo", {}),
+        "tables": payload.get("tables") or raw_page_json.get("tables", {}),
         "corrected_ocr": {
             "page": page,
             "reviewer": reviewer,
