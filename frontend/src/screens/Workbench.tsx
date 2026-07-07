@@ -2467,43 +2467,45 @@ function BatchReview({
 
         <div style={{ borderTop: "1px solid var(--border-color, #e1dacd)", paddingTop: "16px" }}>
           <PanelTitle icon={<Database size={16} />} title="Batch Review Queue" />
-          <p className="muted">Select a provisional run and page below to review candidate extractions.</p>
+          <p className="muted" style={{ marginBottom: "14px" }}>
+            Select a batch run and page below to review and approve candidates.
+          </p>
           
-          <div className="readerActions" style={{ margin: "12px 0" }}>
-            <button className="primaryButton" type="button" onClick={() => onCreateRun()}>
-              Create sample run
-            </button>
-            <button className="quietButton light" type="button" onClick={() => onPromote(selectedRunId)}>
-              Save approved items
-            </button>
-            <button className="quietButton light dangerButton" type="button" onClick={() => onDeleteRun(selectedRunId)} disabled={!selectedRunId}>
-              Delete run
-            </button>
-          </div>
-          {message && <div className={isPositiveMessage(message) ? "successBanner" : "errorBanner inline"}>{message}</div>}
+          {message && <div className={isPositiveMessage(message) ? "successBanner" : "errorBanner inline"} style={{ marginBottom: "12px" }}>{message}</div>}
 
-          <label className="deskField">
-            <span>Select Batch Run</span>
-            <select value={selectedRunId} onChange={(event) => onRunChange(event.target.value)}>
-              <option value="">Choose a batch run</option>
-              {runs.map((run) => (
-                <option key={run.run_id} value={run.run_id}>
-                  {batchRunLabel(run)}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div style={{ display: "flex", gap: "10px", alignItems: "flex-end", marginBottom: "14px" }}>
+            <label className="deskField" style={{ margin: 0, flex: 1 }}>
+              <span>Select Batch Run</span>
+              <select value={selectedRunId} onChange={(event) => onRunChange(event.target.value)}>
+                <option value="">Choose a batch run</option>
+                {runs.map((run) => (
+                  <option key={run.run_id} value={run.run_id}>
+                    {batchRunLabel(run)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {selectedRunId && (
+              <button 
+                className="quietButton light dangerButton" 
+                type="button" 
+                onClick={() => onDeleteRun(selectedRunId)}
+                style={{ padding: "8px 12px", height: "36px", display: "flex", alignItems: "center", gap: "4px" }}
+                title="Delete this provisional run"
+              >
+                <Trash2 size={15} /> Delete Run
+              </button>
+            )}
+          </div>
 
           {selectedRun && (
             <div style={{
-              padding: "14px",
+              padding: "12px",
               background: "var(--bg-surface-elevated, #fcfbf9)",
               border: "1px solid var(--border-color, #e1dacd)",
               borderRadius: "8px",
               marginBottom: "16px",
-              marginTop: "8px",
-              boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)",
-              transition: "all 0.2s ease"
+              boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)"
             }}>
               <div style={{ 
                 display: "flex", 
@@ -2520,7 +2522,7 @@ function BatchReview({
                 className={selectedRun.status?.toLowerCase().includes("failed") || selectedRun.status?.toLowerCase().includes("error") ? "statusBadge error" : "muted"}
                 style={{ 
                   fontSize: "11px", 
-                  marginTop: "6px", 
+                  marginTop: "4px", 
                   fontStyle: "italic",
                   lineHeight: "1.4",
                   wordBreak: "break-word",
@@ -2531,7 +2533,7 @@ function BatchReview({
               >
                 {selectedRun.status}
               </div>
-              <div className="progressBarContainer" style={{ background: "var(--border-color-light, #f5f5f5)", borderRadius: 4, height: 6, width: "100%", overflow: "hidden", marginTop: 10 }}>
+              <div className="progressBarContainer" style={{ background: "var(--border-color-light, #f5f5f5)", borderRadius: 4, height: 6, width: "100%", overflow: "hidden", marginTop: 8 }}>
                 <div 
                   className="progressBarFill" 
                   style={{ 
@@ -2545,25 +2547,49 @@ function BatchReview({
             </div>
           )}
 
-          <div className="inlineFields" style={{ marginTop: "12px" }}>
-            <input value={filters.source_id} onChange={(event) => updateFilter("source_id", event.target.value)} placeholder="Source ID" />
-            <input value={filters.page} onChange={(event) => updateFilter("page", event.target.value.replace(/\D/g, ""))} placeholder="Page" />
+          <div className="inlineFields" style={{ marginTop: "12px", marginBottom: "12px" }}>
+            <input value={filters.source_id} onChange={(event) => updateFilter("source_id", event.target.value)} placeholder="Filter Source ID" />
+            <input value={filters.page} onChange={(event) => updateFilter("page", event.target.value.replace(/\D/g, ""))} placeholder="Filter Page" />
           </div>
 
           <div className="batchPageList" style={{ marginTop: "12px" }}>
-            {pages.map((page) => (
-              <button
-                className="rowButton"
-                type="button"
-                key={`${page.source_id}_${page.page}`}
-                onClick={() => onLoadPage(selectedRunId, page.source_id, page.page)}
-              >
-                <strong>{page.title_original || page.title} p.{page.page}</strong>
-                <span>
-                  {page.ocr_status} · {page.quote_candidate_count} quotes · {page.structured_candidate_count} structured
-                </span>
-              </button>
-            ))}
+            {pages.map((page) => {
+              const isSelected = selectedPage && selectedPage.source_id === page.source_id && selectedPage.page === page.page;
+              const counts = page.candidate_status_counts || {};
+              const total = (page.quote_candidate_count || 0) + (page.structured_candidate_count || 0);
+              const pending = counts.candidate || 0;
+              
+              let statusBadge = null;
+              if (total === 0) {
+                statusBadge = <span className="statusBadge info" style={{ padding: "1px 5px", fontSize: "10px", margin: 0, fontWeight: 500 }}>No items</span>;
+              } else if (pending === 0) {
+                statusBadge = <span className="statusBadge success" style={{ padding: "1px 5px", fontSize: "10px", margin: 0, fontWeight: 500 }}>✓ Reviewed</span>;
+              } else {
+                statusBadge = <span className="statusBadge warning" style={{ padding: "1px 5px", fontSize: "10px", margin: 0, fontWeight: 500 }}>Pending {pending}/{total}</span>;
+              }
+
+              return (
+                <button
+                  className="rowButton"
+                  type="button"
+                  key={`${page.source_id}_${page.page}`}
+                  onClick={() => onLoadPage(selectedRunId, page.source_id, page.page)}
+                  style={isSelected ? { 
+                    background: "var(--border-color-light, #e8dfd8)", 
+                    borderLeft: "4px solid var(--accent-primary, #7d3d2f)",
+                    paddingLeft: "8px"
+                  } : {}}
+                >
+                  <div style={{ display: "flex", width: "100%", justifyContent: "space-between", alignItems: "center", marginBottom: "3px" }}>
+                    <strong style={{ fontSize: "12px" }}>{page.title_original || page.title} p.{page.page}</strong>
+                    {statusBadge}
+                  </div>
+                  <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
+                    OCR: {page.ocr_status} · {page.quote_candidate_count} quotes · {page.structured_candidate_count} structured
+                  </span>
+                </button>
+              );
+            })}
             {pages.length === 0 && (
               <p className="muted">No pages found in this run.</p>
             )}
