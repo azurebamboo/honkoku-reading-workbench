@@ -3156,7 +3156,16 @@ function ReadingDesk({
       setRegion(result.region);
       setRegionResult(result);
       setRegionOcrResult(null);
-      setTableMessage("Selected region saved for review.");
+
+      // Trigger browser download / Save As
+      const link = document.createElement("a");
+      link.href = `${API_BASE}${result.crop_image_url}`;
+      link.download = `crop_${pageData.source.source_id}_page_${page}_${result.region_id}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      setTableMessage("Selected region exported as image download.");
     } catch (err) {
       setTableMessage(err.message);
     }
@@ -3327,10 +3336,10 @@ function ReadingDesk({
                   setPageImageVersion((v) => v + 1);
                   if (onReloadPage) onReloadPage();
                 }}
-                title="Reload page metadata and image"
+                title="Refresh page metadata and image"
                 style={{ display: "flex", alignItems: "center", gap: 4 }}
               >
-                <RotateCcw size={14} /> Reload Page
+                <RotateCcw size={14} /> Refresh Data
               </button>
               <a 
                 className="quietButton light pdfLink" 
@@ -3419,9 +3428,9 @@ function ReadingDesk({
             type="button"
             onClick={cropSelectedRegion}
             disabled={!sourceReady || !pageReady || !activeRegion}
-            title="Save the current active crop selection to the server"
+            title="Crop the current active selection and download it as an image file"
           >
-            Save Page Crop
+            Export Page Crop
           </button>
           <button
             className="quietButton light"
