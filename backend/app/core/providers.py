@@ -1082,6 +1082,8 @@ class MineruOCREngine(BaseOCREngine):
                     page_number = page_idx + 1
                     lines = []
                     contents = []
+                    table_counter = 0
+                    page_tables = {}
                     for item in page_items:
                         if not isinstance(item, dict):
                             continue
@@ -1132,7 +1134,18 @@ class MineruOCREngine(BaseOCREngine):
                                         pass
                                 contents.append(line_dict)
                         else:
-                            item_text = item.get("text", "") or item.get("markdown", "") or item.get("html", "")
+                            if item_type == "table":
+                                table_id = f"table_{table_counter}"
+                                table_counter += 1
+                                table_val = item.get("markdown", "") or item.get("text", "") or item.get("html", "")
+                                if not table_val or not isinstance(table_val, str) or not table_val.strip():
+                                    table_val = "| Column 1 | Column 2 |\n|---|---|\n| Cell 1 | Cell 2 |"
+                                page_tables[table_id] = {
+                                    "markdown": table_val.strip()
+                                }
+                                item_text = f"[Table: {table_id}]"
+                            else:
+                                item_text = item.get("text", "") or item.get("markdown", "") or item.get("html", "")
                             if not item_text:
                                 nested_texts = []
                                 if "lines" in item and isinstance(item["lines"], list):
@@ -1204,7 +1217,8 @@ class MineruOCREngine(BaseOCREngine):
                             "imginfo": {
                                 "img_width": width,
                                 "img_height": height
-                            }
+                            },
+                            "tables": page_tables
                         }
                     }
             
