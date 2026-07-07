@@ -2123,23 +2123,10 @@ function BatchReview({
   sources,
   onRefresh,
 }) {
-  const [filters, setFilters] = useState({ source_id: "", page: "", candidate_type: "", status: "", ocr_status: "" });
-  const [draftPage, setDraftPage] = useState(null);
-  const [showRejected, setShowRejected] = useState(false);
-
-  // Redesign: Local state for Left Panel configuration placeholders
   const [selectedSourceId, setSelectedSourceId] = useState("");
   const [selectedOcrMethod, setSelectedOcrMethod] = useState("ndlocr_lite");
   const [ocrSettings, setOcrSettings] = useState<Record<string, any>>({});
-  const [selectedNlpMethod, setSelectedNlpMethod] = useState("gliner");
-  const [glinerLabels, setGlinerLabels] = useState("person, place, organization, group, event, document");
-  const [glinerRelations, setGlinerRelations] = useState("spouse, parent, child, colleague, employer, opponent, ally");
-  const [slmPrompt, setSlmPrompt] = useState("Extract all entities, relationships, and evidence quotes from this text in Japanese.");
-  const [llmPrompt, setLlmPrompt] = useState("Identify all key actors, organizations, relationships, and supporting evidence quotes.");
   const [runProgress, setRunProgress] = useState("");
-
-  // Accordion expanded state for quote cards
-  const [expandedQuotes, setExpandedQuotes] = useState({});
 
   // Keep logs of the active run status updates
   const [logs, setLogs] = useState<string[]>([]);
@@ -2175,196 +2162,11 @@ function BatchReview({
     }
   }, [activeRun?.status]);
 
-  useEffect(() => {
-    setDraftPage(selectedPage ? JSON.parse(JSON.stringify(selectedPage)) : null);
-  }, [selectedPage]);
-
-  const selectedRun = runs.find((run) => run.run_id === selectedRunId);
-
-  function updateFilter(name, value) {
-    const next = { ...filters, [name]: value };
-    setFilters(next);
-    onLoadPages(selectedRunId, next);
-  }
-
-  function pageWithCandidateUpdate(page, group, candidateId, updates) {
-    if (!page) return null;
-    return {
-      ...page,
-      [group]: page[group].map((candidate) => (
-        candidate.candidate_id === candidateId ? { ...candidate, ...updates } : candidate
-      )),
-    };
-  }
-
-  function updateCandidate(group, candidateId, updates) {
-    setDraftPage((current) => pageWithCandidateUpdate(current, group, candidateId, updates));
-  }
-
-  async function setCandidateStatus(group, candidateId, status) {
-    const next = pageWithCandidateUpdate(draftPage, group, candidateId, {
-      review_status: status,
-      promotion_skip_reason: "",
-      promotion_message: "",
-    });
-    if (!next) return;
-    setDraftPage(next);
-    await onSavePage(next, { quiet: true });
-    if (status === "approved") {
-      await onPromote(next.run_id, next.source_id, next.page);
-    }
-  }
-
-  const toggleQuoteExpanded = (quoteId) => {
-    setExpandedQuotes((prev) => ({ ...prev, [quoteId]: !prev[quoteId] }));
-  };
-
-  function structuredTextUpdate(candidate, value) {
-    const kind = candidate.kind || candidate.candidate_type;
-    const updates: FlexibleRecord = { label: value };
-    if (kind === "entity" || kind === "place") {
-      updates.entity_name = value;
-      updates.entity = { ...(candidate.entity || {}), name: value };
-    } else if (kind === "keyword") {
-      updates.keyword = value;
-    } else if (kind === "claim") {
-      updates.claim = { ...(candidate.claim || {}), text: value };
-    } else if (kind === "note") {
-      updates.note = value;
-    }
-    return updates;
-  }
-
-  function relationshipEditor(candidate) {
-    const relationship = candidate.relationship || {};
-    const subject = relationship.subject || {};
-    const objectRecord = relationship.object || {};
-    return (
-      <div className="candidateMiniGrid">
-        <label>
-          <span>Subject</span>
-          <input
-            value={subject.name || ""}
-            onChange={(event) => updateCandidate("structured_candidates", candidate.candidate_id, {
-              relationship: { ...relationship, subject: { ...subject, name: event.target.value } },
-            })}
-          />
-        </label>
-        <label>
-          <span>Relation</span>
-          <input
-            value={relationship.relation_type || ""}
-            onChange={(event) => updateCandidate("structured_candidates", candidate.candidate_id, {
-              relationship: { ...relationship, relation_type: event.target.value },
-            })}
-            placeholder="e.g. criticism, affiliation"
-          />
-        </label>
-        <label>
-          <span>Object</span>
-          <input
-            value={objectRecord.name || ""}
-            onChange={(event) => updateCandidate("structured_candidates", candidate.candidate_id, {
-              relationship: { ...relationship, object: { ...objectRecord, name: event.target.value } },
-            })}
-          />
-        </label>
-      </div>
-    );
-  }
-
-  function attitudeEditor(candidate) {
-    const attitude = candidate.attitude || {};
-    const speaker = attitude.speaker || {};
-    const target = attitude.target || {};
-    return (
-      <div className="candidateMiniGrid">
-        <label>
-          <span>Speaker</span>
-          <input
-            value={speaker.name || ""}
-            onChange={(event) => updateCandidate("structured_candidates", candidate.candidate_id, {
-              attitude: { ...attitude, speaker: { ...speaker, name: event.target.value } },
-            })}
-          />
-        </label>
-        <label>
-          <span>Attitude</span>
-          <input
-            value={attitude.attitude_type || ""}
-            onChange={(event) => updateCandidate("structured_candidates", candidate.candidate_id, {
-              attitude: { ...attitude, attitude_type: event.target.value },
-            })}
-            placeholder="e.g. criticism, support"
-          />
-        </label>
-        <label>
-          <span>Polarity</span>
-          <select
-            value={attitude.polarity || ""}
-            onChange={(event) => updateCandidate("structured_candidates", candidate.candidate_id, {
-              attitude: { ...attitude, polarity: event.target.value },
-            })}
-          >
-            <option value="">Choose</option>
-            <option value="positive">positive</option>
-            <option value="negative">negative</option>
-            <option value="neutral">neutral</option>
-            <option value="mixed">mixed</option>
-          </select>
-        </label>
-        <label>
-          <span>Target</span>
-          <input
-            value={target.name || ""}
-            onChange={(event) => updateCandidate("structured_candidates", candidate.candidate_id, {
-              attitude: { ...attitude, target: { ...target, name: event.target.value } },
-            })}
-          />
-        </label>
-      </div>
-    );
-  }
-
-  function visibleCandidate(candidate) {
-    return showRejected || candidate.review_status !== "rejected";
-  }
-
-  function candidateActions(group, candidate) {
-    const status = candidate.review_status || "candidate";
-    if (status === "rejected" || status === "promoted") {
-      return (
-        <button className="quietButton light" type="button" onClick={() => setCandidateStatus(group, candidate.candidate_id, "candidate")}>
-          Undo
-        </button>
-      );
-    }
-    return (
-      <>
-        <button
-          className={status === "approved" ? "primaryButton" : "quietButton light"}
-          type="button"
-          onClick={() => setCandidateStatus(group, candidate.candidate_id, "approved")}
-        >
-          Approve
-        </button>
-        <button className="quietButton light dangerButton" type="button" onClick={() => setCandidateStatus(group, candidate.candidate_id, "rejected")}>
-          Reject
-        </button>
-      </>
-    );
-  }
-
-  const quoteCandidates = (draftPage?.quote_candidates || []).filter(visibleCandidate);
-  const structuredCandidates = (draftPage?.structured_candidates || []).filter(visibleCandidate);
-  const displayedOcrLayer = draftPage?.displayed_ocr_layer || draftPage?.ocr_layer || "none";
-  const latestOcrLayer = draftPage?.latest_available_ocr_layer || "none";
-
   return (
-    <div className="batchReviewGrid">
-      <section className="panel batchQueuePanel">
+    <div className="batchReviewGrid" style={{ display: "grid", gridTemplateColumns: "minmax(320px, 1fr) minmax(480px, 1.2fr)", gap: "16px" }}>
+      <section className="panel batchQueuePanel" style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
         <PanelTitle icon={<Database size={18} />} title="Batch Processing Control" />
-        <p className="muted" style={{ marginBottom: "14px" }}>
+        <p className="muted" style={{ marginBottom: "6px" }}>
           Configure batch extraction for a whole source document (PDF/ZIP).
         </p>
 
@@ -2372,7 +2174,6 @@ function BatchReview({
           display: "flex",
           flexDirection: "column",
           gap: "14px",
-          marginBottom: "24px",
           padding: "16px",
           background: "var(--bg-surface-elevated, #fcfbf9)",
           borderRadius: "8px",
@@ -2439,8 +2240,6 @@ function BatchReview({
                 });
                 setRunProgress(`Task started: ${res.message || res.run_id}`);
                 if (res.run_id) {
-                  onRunChange(res.run_id);
-                  onLoadPages(res.run_id);
                   if (onRefresh) {
                     await onRefresh();
                   }
@@ -2462,138 +2261,6 @@ function BatchReview({
               {runProgress}
             </div>
           )}
-
-        </div>
-
-        <div style={{ borderTop: "1px solid var(--border-color, #e1dacd)", paddingTop: "16px" }}>
-          <PanelTitle icon={<Database size={16} />} title="Batch Review Queue" />
-          <p className="muted" style={{ marginBottom: "14px" }}>
-            Select a batch run and page below to review and approve candidates.
-          </p>
-          
-          {message && <div className={isPositiveMessage(message) ? "successBanner" : "errorBanner inline"} style={{ marginBottom: "12px" }}>{message}</div>}
-
-          <div style={{ display: "flex", gap: "10px", alignItems: "flex-end", marginBottom: "14px" }}>
-            <label className="deskField" style={{ margin: 0, flex: 1 }}>
-              <span>Select Batch Run</span>
-              <select value={selectedRunId} onChange={(event) => onRunChange(event.target.value)}>
-                <option value="">Choose a batch run</option>
-                {runs.map((run) => (
-                  <option key={run.run_id} value={run.run_id}>
-                    {batchRunLabel(run)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {selectedRunId && (
-              <button 
-                className="quietButton light dangerButton" 
-                type="button" 
-                onClick={() => onDeleteRun(selectedRunId)}
-                style={{ padding: "8px 12px", height: "36px", display: "flex", alignItems: "center", gap: "4px" }}
-                title="Delete this provisional run"
-              >
-                <Trash2 size={15} /> Delete Run
-              </button>
-            )}
-          </div>
-
-          {selectedRun && (
-            <div style={{
-              padding: "12px",
-              background: "var(--bg-surface-elevated, #fcfbf9)",
-              border: "1px solid var(--border-color, #e1dacd)",
-              borderRadius: "8px",
-              marginBottom: "16px",
-              boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)"
-            }}>
-              <div style={{ 
-                display: "flex", 
-                justifyContent: "space-between", 
-                alignItems: "center",
-                fontSize: "12px", 
-                fontWeight: 600, 
-                color: "var(--text-primary)"
-              }}>
-                <span>Run Status</span>
-                <span>{getStatusPercent(selectedRun.status)}%</span>
-              </div>
-              <div 
-                className={selectedRun.status?.toLowerCase().includes("failed") || selectedRun.status?.toLowerCase().includes("error") ? "statusBadge error" : "muted"}
-                style={{ 
-                  fontSize: "11px", 
-                  marginTop: "4px", 
-                  fontStyle: "italic",
-                  lineHeight: "1.4",
-                  wordBreak: "break-word",
-                  display: "inline-block",
-                  padding: selectedRun.status?.toLowerCase().includes("failed") || selectedRun.status?.toLowerCase().includes("error") ? "4px 8px" : "0",
-                  borderRadius: "4px"
-                }}
-              >
-                {selectedRun.status}
-              </div>
-              <div className="progressBarContainer" style={{ background: "var(--border-color-light, #f5f5f5)", borderRadius: 4, height: 6, width: "100%", overflow: "hidden", marginTop: 8 }}>
-                <div 
-                  className="progressBarFill" 
-                  style={{ 
-                    background: selectedRun.status?.toLowerCase().includes("failed") || selectedRun.status?.toLowerCase().includes("error") ? "#d93838" : "var(--accent-primary, #7d3d2f)", 
-                    width: `${getStatusPercent(selectedRun.status)}%`, 
-                    height: "100%", 
-                    transition: "width 0.3s ease" 
-                  }} 
-                />
-              </div>
-            </div>
-          )}
-
-          <div className="inlineFields" style={{ marginTop: "12px", marginBottom: "12px" }}>
-            <input value={filters.source_id} onChange={(event) => updateFilter("source_id", event.target.value)} placeholder="Filter Source ID" />
-            <input value={filters.page} onChange={(event) => updateFilter("page", event.target.value.replace(/\D/g, ""))} placeholder="Filter Page" />
-          </div>
-
-          <div className="batchPageList" style={{ marginTop: "12px" }}>
-            {pages.map((page) => {
-              const isSelected = selectedPage && selectedPage.source_id === page.source_id && selectedPage.page === page.page;
-              const counts = page.candidate_status_counts || {};
-              const total = (page.quote_candidate_count || 0) + (page.structured_candidate_count || 0);
-              const pending = counts.candidate || 0;
-              
-              let statusBadge = null;
-              if (total === 0) {
-                statusBadge = <span className="statusBadge info" style={{ padding: "1px 5px", fontSize: "10px", margin: 0, fontWeight: 500 }}>No items</span>;
-              } else if (pending === 0) {
-                statusBadge = <span className="statusBadge success" style={{ padding: "1px 5px", fontSize: "10px", margin: 0, fontWeight: 500 }}>✓ Reviewed</span>;
-              } else {
-                statusBadge = <span className="statusBadge warning" style={{ padding: "1px 5px", fontSize: "10px", margin: 0, fontWeight: 500 }}>Pending {pending}/{total}</span>;
-              }
-
-              return (
-                <button
-                  className="rowButton"
-                  type="button"
-                  key={`${page.source_id}_${page.page}`}
-                  onClick={() => onLoadPage(selectedRunId, page.source_id, page.page)}
-                  style={isSelected ? { 
-                    background: "var(--border-color-light, #e8dfd8)", 
-                    borderLeft: "4px solid var(--accent-primary, #7d3d2f)",
-                    paddingLeft: "8px"
-                  } : {}}
-                >
-                  <div style={{ display: "flex", width: "100%", justifyContent: "space-between", alignItems: "center", marginBottom: "3px" }}>
-                    <strong style={{ fontSize: "12px" }}>{page.title_original || page.title} p.{page.page}</strong>
-                    {statusBadge}
-                  </div>
-                  <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
-                    OCR: {page.ocr_status} · {page.quote_candidate_count} quotes · {page.structured_candidate_count} structured
-                  </span>
-                </button>
-              );
-            })}
-            {pages.length === 0 && (
-              <p className="muted">No pages found in this run.</p>
-            )}
-          </div>
         </div>
       </section>
 
@@ -2665,230 +2332,73 @@ function BatchReview({
               </button>
             </div>
           </>
-        ) : !draftPage ? (
-          <>
-            <PanelTitle icon={<NotebookPen size={18} />} title="Batch Page Review" />
-            <p className="muted">Select a page from the queue on the left.</p>
-          </>
         ) : (
           <>
-            <PanelTitle icon={<NotebookPen size={18} />} title="Batch Page Review" />
-            <div className="statusBadgeRow">
-              <span className="statusBadge warning">Batch candidate</span>
-              <span className="statusBadge success">Promoted only after approval</span>
-              <span className="statusBadge info">Showing {displayedOcrLayer} OCR</span>
-              {draftPage.worker_ai_status && <span className="statusBadge info">Worker: {draftPage.worker_ai_status}</span>}
-              {draftPage.ocr_is_stale && <span className="statusBadge warning">Corrected OCR available</span>}
-              {draftPage.ocr_review_status === "edited" && <span className="statusBadge warning">Batch OCR edited; not auto-overwritten</span>}
-            </div>
-            <h1>{draftPage.title_original || draftPage.title} · page {draftPage.page}</h1>
-            <dl className="compactMeta tight" style={{ marginBottom: "20px" }}>
-              <div><dt>Displayed OCR</dt><dd>{displayedOcrLayer}</dd></div>
-              <div><dt>Displayed path</dt><dd>{draftPage.displayed_ocr_page_json || draftPage.ocr_page_json || "none"}</dd></div>
-              <div><dt>Latest available</dt><dd>{latestOcrLayer}</dd></div>
-              <div><dt>Latest path</dt><dd>{draftPage.latest_available_ocr_page_json || "none"}</dd></div>
-              <div><dt>Network review</dt><dd>{draftPage.network_review_status || "pending"}</dd></div>
-              <div><dt>Analysis</dt><dd>{draftPage.analysis_engine || "local_fallback"}</dd></div>
-              <div><dt>Worker</dt><dd>{draftPage.worker_ai_provider || "none"} {draftPage.worker_ai_model || ""}</dd></div>
-            </dl>
-            {draftPage.worker_ai_message && <p className="muted">{draftPage.worker_ai_message}</p>}
-            {draftPage.ocr_sync_message && <p className="muted">{draftPage.ocr_sync_message}</p>}
+            <PanelTitle icon={<Database size={18} />} title="Batch Process History" />
+            {message && <div className={isPositiveMessage(message) ? "successBanner" : "errorBanner inline"} style={{ marginTop: "12px", marginBottom: "12px" }}>{message}</div>}
             
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", marginTop: "12px" }}>
-              <div className="readerActions" style={{ margin: 0 }}>
-                <button className="primaryButton" type="button" onClick={() => onSavePage(draftPage)}>
-                  Save page draft
-                </button>
-                <button className="quietButton light" type="button" onClick={() => onPromote(draftPage.run_id, draftPage.source_id, draftPage.page, draftPage)}>
-                  Promote approved page items
-                </button>
-                <button 
-                  className="quietButton light" 
-                  type="button" 
-                  onClick={() => onSyncOcr(draftPage.run_id, draftPage.source_id, draftPage.page)}
-                  style={{
-                    border: draftPage.ocr_is_stale ? "1px solid var(--accent-primary, #7d3d2f)" : "",
-                    background: draftPage.ocr_is_stale ? "var(--bg-surface-elevated, #fcfbf9)" : "",
-                    color: draftPage.ocr_is_stale ? "var(--accent-primary, #7d3d2f)" : ""
-                  }}
-                  title="Synchronize and parse this page again using the latest proofread OCR from the Reading Desk"
-                >
-                  {draftPage.ocr_is_stale ? "Sync OCR (Update Available)" : "Sync OCR"}
-                </button>
-              </div>
-              <label className="inlineCheck" style={{ margin: 0 }}>
-                <input type="checkbox" checked={showRejected} onChange={(event) => setShowRejected(event.target.checked)} />
-                <span>Show rejected candidates</span>
-              </label>
-            </div>
+            <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: "10px" }}>
+              {runs.length === 0 ? (
+                <p className="muted">No previous batch runs found.</p>
+              ) : (
+                runs.map((run) => {
+                  const counts = run.counts || {};
+                  const pagesCount = counts.pages || 0;
+                  const sourceTitle = run.sources?.[0]?.title_original || run.sources?.[0]?.title || run.source_ids?.[0] || "Batch run";
+                  
+                  let statusBadge = null;
+                  if (run.status === "completed") {
+                    statusBadge = <span className="statusBadge success" style={{ margin: 0 }}>Completed</span>;
+                  } else if (run.status === "stopped") {
+                    statusBadge = <span className="statusBadge warning" style={{ margin: 0 }}>Stopped</span>;
+                  } else if (run.status && (run.status.toLowerCase().includes("failed") || run.status.toLowerCase().includes("error"))) {
+                    statusBadge = <span className="statusBadge error" style={{ margin: 0 }}>Failed</span>;
+                  } else {
+                    statusBadge = <span className="statusBadge info" style={{ margin: 0 }}>{run.status || "Unknown"}</span>;
+                  }
 
-            <h2>Candidate Evidence Quotes & Entities</h2>
-            <p className="muted" style={{ marginBottom: "12px" }}>
-              Click any quote card to inspect and approve the entities and relationships extracted from it.
-            </p>
-
-            <div className="candidateCardList">
-              {quoteCandidates.length === 0 && (
-                <p className="muted">No quote candidates for this page yet.</p>
-              )}
-              {quoteCandidates.map((candidate) => {
-                const isExpanded = !!expandedQuotes[candidate.candidate_id];
-                // Filter child entities and relations for this quote candidate
-                const children = structuredCandidates.filter(
-                  (c) => c.quote_candidate_id === candidate.candidate_id || c.evidence_id === `batch_${candidate.candidate_id}`
-                );
-
-                return (
-                  <div
-                    className={`candidateCard quote ${isExpanded ? "expanded" : ""} status-${candidate.review_status || "candidate"}`}
-                    key={candidate.candidate_id}
-                    style={{ borderLeft: "4px solid #7d3d2f", cursor: "default" }}
-                  >
-                    <div
-                      onClick={() => toggleQuoteExpanded(candidate.candidate_id)}
-                      style={{ cursor: "pointer", userSelect: "none" }}
+                  return (
+                    <div 
+                      key={run.run_id} 
+                      style={{
+                        padding: "12px 14px",
+                        background: "var(--bg-surface-elevated, #fcfbf9)",
+                        border: "1px solid var(--border-color, #e1dacd)",
+                        borderRadius: "8px",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.02)"
+                      }}
                     >
-                      <div className="candidateCardHeader">
-                        <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                          <strong>QUOTE CANDIDATE</strong> 
-                          <span className={`statusBadge ${candidate.review_status === "approved" ? "success" : candidate.review_status === "rejected" ? "missing" : "warning"}`} style={{ fontSize: "10px", minHeight: "18px", padding: "0 6px" }}>
-                            {candidate.review_status || "pending"}
-                          </span>
-                        </span>
-                        <small>Score {candidate.score ?? "n/a"} (Click to {isExpanded ? "collapse" : "expand"})</small>
-                      </div>
-                      {candidate.promotion_message && <p className="muted" style={{ margin: "4px 0" }}>{candidate.promotion_message}</p>}
-                      {candidate.promotion_skip_reason && <p className="errorText" style={{ margin: "4px 0" }}>{candidate.promotion_skip_reason}</p>}
-                      {candidate.matched_terms?.length > 0 && (
-                        <div className="statusBadgeRow" style={{ marginTop: "4px" }}>
-                          {candidate.matched_terms.slice(0, 6).map((term) => (
-                            <span className="statusBadge info" key={`${candidate.candidate_id}_${term.text}`} style={{ fontSize: "10px" }}>
-                              {term.text} · {term.entity_type}
-                            </span>
-                          ))}
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4px", flex: 1, marginRight: "12px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <strong style={{ fontSize: "13px", color: "var(--text-primary)" }}>{sourceTitle}</strong>
+                          {statusBadge}
                         </div>
-                      )}
-                      <p className="muted" style={{ margin: "4px 0" }}>
-                        {candidate.candidate_reason || "Review suggested passage"}
-                      </p>
-                    </div>
-
-                    <textarea
-                      value={candidate.quote || ""}
-                      onChange={(event) => updateCandidate("quote_candidates", candidate.candidate_id, { quote: event.target.value, label: event.target.value, review_status: "edited" })}
-                      style={{ width: "100%", minHeight: "60px" }}
-                    />
-
-                    <div className="readerActions" style={{ marginTop: "6px" }}>
-                      <button
-                        className="primaryButton"
-                        type="button"
-                        onClick={() => setCandidateStatus("quote_candidates", candidate.candidate_id, "approved")}
-                      >
-                        Approve Quote
-                      </button>
+                        <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
+                          Run ID: <code>{run.run_id}</code> · {formatShortDate(run.created_at)} · {pagesCount} pages
+                        </span>
+                        {run.status !== "completed" && run.status !== "stopped" && !run.status?.toLowerCase().includes("failed") && !run.status?.toLowerCase().includes("error") && (
+                          <span style={{ fontSize: "11px", color: "var(--text-secondary)", fontStyle: "italic" }}>
+                            Detail: {run.status}
+                          </span>
+                        )}
+                      </div>
+                      
                       <button
                         className="quietButton light dangerButton"
                         type="button"
-                        onClick={() => setCandidateStatus("quote_candidates", candidate.candidate_id, "rejected")}
+                        onClick={() => onDeleteRun(run.run_id)}
+                        style={{ padding: "6px 10px", display: "flex", alignItems: "center", gap: "4px" }}
+                        title="Delete this run and all its provisional data"
                       >
-                        Reject Quote
+                        <Trash2 size={14} /> Delete
                       </button>
-                      {onJumpToReadingDesk && (
-                        <button
-                          className="quietButton light"
-                          type="button"
-                          onClick={() => onJumpToReadingDesk(draftPage.source_id, draftPage.page, candidate.quote)}
-                        >
-                          Locate
-                        </button>
-                      )}
                     </div>
-
-                    {isExpanded && (
-                      <div className="childCandidatesSection" style={{
-                        marginTop: "12px",
-                        padding: "12px",
-                        background: "rgba(0, 0, 0, 0.02)",
-                        borderRadius: "6px",
-                        borderTop: "1px solid #e1dacd"
-                      }}>
-                        <h4 style={{ margin: "0 0 10px 0", fontSize: "0.9rem", color: "#7d3d2f" }}>
-                          Extracted Entities & Relations ({children.length})
-                        </h4>
-                        
-                        {children.length === 0 && (
-                          <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>
-                            No nested entities or relations found for this quote.
-                          </p>
-                        )}
-                        
-                        <div style={{ display: "grid", gap: "10px" }}>
-                          {children.map((child) => (
-                            <div
-                              key={child.candidate_id}
-                              style={{
-                                padding: "10px",
-                                background: child.kind === "relationship" ? "#f7f0ed" : child.kind === "place" ? "#f2f7f5" : "#eef3f1",
-                                border: "1px solid #e1dacd",
-                                borderRadius: "6px"
-                              }}
-                            >
-                              <div className="candidateCardHeader" style={{ marginBottom: "6px" }}>
-                                <span style={{ fontSize: "11px", fontWeight: "bold", textTransform: "uppercase", color: "#647174" }}>
-                                  {child.kind || child.candidate_type}
-                                </span>
-                                <span className={`statusBadge ${child.review_status === "approved" ? "success" : child.review_status === "rejected" ? "missing" : "warning"}`} style={{ fontSize: "9px", minHeight: "16px", padding: "0 4px" }}>
-                                  {child.review_status || "pending"}
-                                </span>
-                              </div>
-
-                              {child.promotion_message && <p className="muted" style={{ margin: "4px 0", fontSize: "0.85rem" }}>{child.promotion_message}</p>}
-                              {child.promotion_skip_reason && <p className="errorText" style={{ margin: "4px 0", fontSize: "0.85rem" }}>{child.promotion_skip_reason}</p>}
-
-                              <input
-                                type="text"
-                                value={child.label || child.keyword || child.note || child.quote || ""}
-                                onChange={(event) => updateCandidate("structured_candidates", child.candidate_id, { label: event.target.value, review_status: "edited" })}
-                                style={{
-                                  width: "100%",
-                                  padding: "6px 8px",
-                                  fontSize: "0.9rem",
-                                  borderRadius: "4px",
-                                  border: "1px solid #cfc7ba",
-                                  marginBottom: "8px"
-                                }}
-                              />
-
-                              {child.kind === "relationship" && relationshipEditor(child)}
-                              {child.kind === "attitude" && attitudeEditor(child)}
-
-                              <div style={{ display: "flex", gap: "6px" }}>
-                                <button
-                                  className="primaryButton"
-                                  type="button"
-                                  style={{ padding: "4px 8px", fontSize: "0.8rem", minHeight: "28px" }}
-                                  onClick={() => setCandidateStatus("structured_candidates", child.candidate_id, "approved")}
-                                >
-                                  Approve
-                                </button>
-                                <button
-                                  className="quietButton light dangerButton"
-                                  type="button"
-                                  style={{ padding: "4px 8px", fontSize: "0.8rem", minHeight: "28px" }}
-                                  onClick={() => setCandidateStatus("structured_candidates", child.candidate_id, "rejected")}
-                                >
-                                  Reject
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
           </>
         )}
