@@ -142,6 +142,8 @@ function getStatusPercent(status) {
 }
 
 function Workbench() {
+  const [isDragging, setIsDragging] = useState(false);
+  const dragCounter = useRef(0);
   const [summary, setSummary] = useState(null);
   const [entities, setEntities] = useState([]);
   const [relationships, setRelationships] = useState([]);
@@ -975,6 +977,82 @@ function Workbench() {
     return `${result.message} Source ID: ${source.source_id}.${pages}${checksum}`;
   }
 
+  const importReadingPdfRef = useRef(importReadingPdf);
+  useEffect(() => {
+    importReadingPdfRef.current = importReadingPdf;
+  });
+
+  useEffect(() => {
+    const handleDragEnter = (e: DragEvent) => {
+      e.preventDefault();
+      const types = e.dataTransfer?.types;
+      const isFileDrag = types && (
+        Array.from(types).includes("Files") || 
+        Array.from(types).includes("application/x-moz-file")
+      );
+      
+      if (isFileDrag) {
+        dragCounter.current++;
+        setIsDragging(true);
+      }
+    };
+
+    const handleDragLeave = (e: DragEvent) => {
+      e.preventDefault();
+      const types = e.dataTransfer?.types;
+      const isFileDrag = types && (
+        Array.from(types).includes("Files") || 
+        Array.from(types).includes("application/x-moz-file")
+      );
+      
+      if (isFileDrag) {
+        dragCounter.current--;
+        if (dragCounter.current <= 0) {
+          dragCounter.current = 0;
+          setIsDragging(false);
+        }
+      }
+    };
+
+    const handleDragOver = (e: DragEvent) => {
+      e.preventDefault();
+    };
+
+    const handleDrop = async (e: DragEvent) => {
+      e.preventDefault();
+      setIsDragging(false);
+      dragCounter.current = 0;
+
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        const file = e.dataTransfer.files[0];
+        const lowerName = file.name.toLowerCase();
+        if (lowerName.endsWith(".pdf") || lowerName.endsWith(".zip")) {
+          try {
+            setActiveTab("reading");
+            const msg = await importReadingPdfRef.current(file);
+            alert(msg);
+          } catch (err: any) {
+            alert("Failed to import file: " + err.message);
+          }
+        } else {
+          alert("Only PDF or ZIP files are supported for import.");
+        }
+      }
+    };
+
+    document.addEventListener("dragenter", handleDragEnter);
+    document.addEventListener("dragleave", handleDragLeave);
+    document.addEventListener("dragover", handleDragOver);
+    document.addEventListener("drop", handleDrop);
+
+    return () => {
+      document.removeEventListener("dragenter", handleDragEnter);
+      document.removeEventListener("dragleave", handleDragLeave);
+      document.removeEventListener("dragover", handleDragOver);
+      document.removeEventListener("drop", handleDrop);
+    };
+  }, []);
+
   async function createBatchRun(sourceId = "raw_ee2029d2f4ef") {
     setBatchMessage("");
     setError("");
@@ -1136,6 +1214,15 @@ function Workbench() {
 
   return (
     <main className="appShell sidebar-collapsed">
+      {isDragging && (
+        <div className="dragDropOverlay">
+          <div className="dragDropContent">
+            <Upload size={48} />
+            <h3>Drop your PDF or ZIP file here to import</h3>
+            <p>Supports PDFs and ZIPs containing images</p>
+          </div>
+        </div>
+      )}
 
       <section className="workspace">
         <header className="topbar">
@@ -2161,6 +2248,7 @@ function ReadingDesk({
   onSavePageNote,
 }) {
   const imageFrameRef = useRef(null);
+  const [isLocalDragging, setIsLocalDragging] = useState(false);
   const pageWrapRef = useRef(null);
   const backdropRef = useRef(null);
   const pdfContainerRef = useRef(null);
@@ -2615,6 +2703,44 @@ function ReadingDesk({
       alert(msg);
     } catch (err) {
       alert("Failed to import PDF: " + err.message);
+    }
+  };
+
+  const handleLocalDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleLocalDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsLocalDragging(true);
+  };
+
+  const handleLocalDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsLocalDragging(false);
+  };
+
+  const handleLocalDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsLocalDragging(false);
+
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const file = e.dataTransfer.files[0];
+      const lowerName = file.name.toLowerCase();
+      if (lowerName.endsWith(".pdf") || lowerName.endsWith(".zip")) {
+        try {
+          const msg = await onImportPdf(file);
+          alert(msg);
+        } catch (err: any) {
+          alert("Failed to import file: " + err.message);
+        }
+      } else {
+        alert("Only PDF or ZIP files are supported for import.");
+      }
     }
   };
 
@@ -3081,8 +3207,16 @@ function ReadingDesk({
               </button>
             </>
           )}
-          <label className="quietButton light fileImportButton">
-            <Upload size={15} /> Import PDF/ZIP
+          <label 
+            className={`fileImportDropZone ${isLocalDragging ? 'dragging' : ''}`}
+            onDragOver={handleLocalDragOver}
+            onDragEnter={handleLocalDragEnter}
+            onDragLeave={handleLocalDragLeave}
+            onDrop={handleLocalDrop}
+            title="Import or drag-and-drop a PDF/ZIP file here"
+          >
+            <Upload size={14} /> 
+            <span>{isLocalDragging ? 'Drop file here!' : 'Import PDF/ZIP'}</span>
             <input type="file" accept="application/pdf,.pdf,application/zip,.zip" onChange={importPdf} />
           </label>
           {sourceReady && pageReady && (
@@ -3463,6 +3597,9 @@ function ReadingDesk({
                   ocr_page_json: rawOcrPath,
                   corrected_ocr_page_json: correctedOcrPath,
                   tables: activeTables,
+                  region_ocr_json: regionOcrResult?.region_ocr_json || "",
+                  region_id: regionOcrResult?.region_id || "",
+                  region: regionOcrResult?.region || {},
                 })}
                 disabled={!sourceReady || !pageReady || !text.trim()}
                 style={{ minHeight: "30px", height: "30px", display: "inline-flex", alignItems: "center", gap: "6px", padding: "0 10px", fontSize: "0.82rem" }}
@@ -3560,7 +3697,10 @@ function ReadingDesk({
                       onSaveOcr({
                         ocr_page_json: rawOcrPath,
                         corrected_ocr_page_json: correctedOcrPath,
-                        tables: updatedTables
+                        tables: updatedTables,
+                        region_ocr_json: regionOcrResult?.region_ocr_json || "",
+                        region_id: regionOcrResult?.region_id || "",
+                        region: regionOcrResult?.region || {},
                       });
                     }}
                     style={{ minHeight: "36px", marginTop: "18px" }}
