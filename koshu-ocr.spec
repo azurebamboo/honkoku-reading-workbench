@@ -38,6 +38,7 @@ hiddenimports = [
     'tcy_wrapper',
     'tablerecog',
     'huggingface_hub',
+    'ocr',
 ]
 
 a = Analysis(
