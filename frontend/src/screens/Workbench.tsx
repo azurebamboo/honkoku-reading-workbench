@@ -22,6 +22,7 @@ import {
   RotateCcw,
   Save,
   Search,
+  Settings,
   AlertTriangle,
   UserRound,
   X,
@@ -34,6 +35,8 @@ import {
   Undo,
   Redo,
   FileText,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { API_BASE, fetchJson } from "../api/client";
 import "../styles.css";
@@ -139,6 +142,8 @@ function getStatusPercent(status) {
 }
 
 function Workbench() {
+  const [isDragging, setIsDragging] = useState(false);
+  const dragCounter = useRef(0);
   const [summary, setSummary] = useState(null);
   const [entities, setEntities] = useState([]);
   const [relationships, setRelationships] = useState([]);
@@ -174,6 +179,15 @@ function Workbench() {
   const [activeProject, setActiveProject] = useState("default");
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
+  const [showProjectNoteModal, setShowProjectNoteModal] = useState(false);
+  const [projectNoteText, setProjectNoteText] = useState("");
+  const [showSourceMetadataModal, setShowSourceMetadataModal] = useState(false);
+  const [metaSourceId, setMetaSourceId] = useState("");
+  const [metaTitle, setMetaTitle] = useState("");
+  const [metaCollection, setMetaCollection] = useState("");
+  const [metaCitation, setMetaCitation] = useState("");
+  const [metaNotes, setMetaNotes] = useState("");
+  const [pageNoteText, setPageNoteText] = useState("");
   const [mergeModalOpen, setMergeModalOpen] = useState(false);
   const [mergeInitialTargetId, setMergeInitialTargetId] = useState("");
   const [globalOcrResults, setGlobalOcrResults] = useState([]);
@@ -358,11 +372,103 @@ function Workbench() {
     return () => clearTimeout(timer);
   }, [filters.query]);
 
+  async function loadProjectNote(projectId) {
+    try {
+      const res = await fetchJson(`/api/v1/projects/${projectId}/note`);
+      setProjectNoteText(res.note || "");
+    } catch (err) {
+      console.error("Failed to load project note:", err);
+    }
+  }
+
+  async function saveProjectNote(projectId, note) {
+    try {
+      setLoading(true);
+      await fetchJson(`/api/v1/projects/${projectId}/note`, {
+        method: "PUT",
+        body: JSON.stringify({ note })
+      });
+      setShowProjectNoteModal(false);
+    } catch (err) {
+      alert("Failed to save project note: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleOpenSourceMetadata(sourceId) {
+    try {
+      setLoading(true);
+      const artifact = await fetchJson(`/api/v1/extraction-artifacts/${sourceId}`);
+      const srcRecord = readingSources.find(s => s.source_id === sourceId) || {};
+      
+      setMetaSourceId(sourceId);
+      setMetaTitle(srcRecord.title_original || srcRecord.title || artifact.title || sourceId);
+      setMetaCollection(srcRecord.collection || artifact.collection || "");
+      setMetaCitation(srcRecord.citation || artifact.citation || "");
+      setMetaNotes(artifact.notes || srcRecord.notes || "");
+      
+      setShowSourceMetadataModal(true);
+    } catch (err) {
+      alert("Failed to load source metadata: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSaveSourceMetadata() {
+    if (!metaTitle.trim()) {
+      alert("Source title is required");
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      await fetchJson(`/api/v1/sources/${metaSourceId}/metadata`, {
+        method: "PUT",
+        body: JSON.stringify({
+          title: metaTitle.trim(),
+          title_original: metaTitle.trim(),
+          collection: metaCollection.trim(),
+          citation: metaCitation.trim(),
+          notes: metaNotes
+        })
+      });
+      
+      setShowSourceMetadataModal(false);
+      
+      const readingData = await fetchJson("/api/v1/reading/sources");
+      setReadingSources(readingData);
+      if (selectedReadingSourceId === metaSourceId) {
+        await loadReadingPage(metaSourceId, selectedReadingPage);
+        await loadArtifact(metaSourceId);
+      }
+    } catch (err) {
+      alert("Failed to save source metadata: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function savePageNoteText(sourceId, page, note) {
+    if (!sourceId || !page) return;
+    try {
+      await fetchJson(`/api/v1/reading/sources/${sourceId}/pages/${page}/note`, {
+        method: "PUT",
+        body: JSON.stringify({ note })
+      });
+      await loadReadingPage(sourceId, page);
+    } catch (err) {
+      alert("Failed to save page note: " + err.message);
+    }
+  }
+
   async function loadProjects() {
     try {
       const data = await fetchJson("/api/v1/projects");
       setProjects(data.projects);
       setActiveProject(data.active);
+      loadProjectNote(data.active);
     } catch (err) {
       console.error("Failed to load projects", err);
     }
@@ -376,6 +482,7 @@ function Workbench() {
         body: JSON.stringify({ project_id: projectId }),
       });
       setActiveProject(projectId);
+      loadProjectNote(projectId);
       setSelectedReadingSourceId("");
       setSelectedBatchRunId("");
       setSelectedArtifactId("");
@@ -537,7 +644,7 @@ function Workbench() {
 
     const interval = setInterval(async () => {
       try {
-        const batchRunData = await fetchJson("/batch/biographies/runs");
+        const batchRunData = await fetchJson("/api/v1/batches/biographies/runs");
         setBatchRuns(batchRunData);
         if (selectedBatchRunId) {
           await loadBatchPages(selectedBatchRunId);
@@ -595,6 +702,7 @@ function Workbench() {
       const pageData = await fetchJson(`/api/v1/reading/sources/${sourceId}/pages/${page}`);
       setReadingPage(pageData);
       setReadingText(pageData.ocr.corrected_text || pageData.ocr.raw_text || "");
+      setPageNoteText(pageData.page_note || "");
       setDeskForm((current) => ({ ...current, quote: "", keyword: "", customKeyword: "", note: "", claimText: "", evidenceId: "" }));
       rememberReadingSource(sourceId);
     } catch (err) {
@@ -643,6 +751,7 @@ function Workbench() {
           region_ocr_json: provenance.region_ocr_json || "",
           region: provenance.region || {},
           region_id: provenance.region_id || "",
+          tables: provenance.tables,
           debug: import.meta.env.DEV,
         }),
       });
@@ -868,6 +977,82 @@ function Workbench() {
     return `${result.message} Source ID: ${source.source_id}.${pages}${checksum}`;
   }
 
+  const importReadingPdfRef = useRef(importReadingPdf);
+  useEffect(() => {
+    importReadingPdfRef.current = importReadingPdf;
+  });
+
+  useEffect(() => {
+    const handleDragEnter = (e: DragEvent) => {
+      e.preventDefault();
+      const types = e.dataTransfer?.types;
+      const isFileDrag = types && (
+        Array.from(types).includes("Files") || 
+        Array.from(types).includes("application/x-moz-file")
+      );
+      
+      if (isFileDrag) {
+        dragCounter.current++;
+        setIsDragging(true);
+      }
+    };
+
+    const handleDragLeave = (e: DragEvent) => {
+      e.preventDefault();
+      const types = e.dataTransfer?.types;
+      const isFileDrag = types && (
+        Array.from(types).includes("Files") || 
+        Array.from(types).includes("application/x-moz-file")
+      );
+      
+      if (isFileDrag) {
+        dragCounter.current--;
+        if (dragCounter.current <= 0) {
+          dragCounter.current = 0;
+          setIsDragging(false);
+        }
+      }
+    };
+
+    const handleDragOver = (e: DragEvent) => {
+      e.preventDefault();
+    };
+
+    const handleDrop = async (e: DragEvent) => {
+      e.preventDefault();
+      setIsDragging(false);
+      dragCounter.current = 0;
+
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        const file = e.dataTransfer.files[0];
+        const lowerName = file.name.toLowerCase();
+        if (lowerName.endsWith(".pdf") || lowerName.endsWith(".zip")) {
+          try {
+            setActiveTab("reading");
+            const msg = await importReadingPdfRef.current(file);
+            alert(msg);
+          } catch (err: any) {
+            alert("Failed to import file: " + err.message);
+          }
+        } else {
+          alert("Only PDF or ZIP files are supported for import.");
+        }
+      }
+    };
+
+    document.addEventListener("dragenter", handleDragEnter);
+    document.addEventListener("dragleave", handleDragLeave);
+    document.addEventListener("dragover", handleDragOver);
+    document.addEventListener("drop", handleDrop);
+
+    return () => {
+      document.removeEventListener("dragenter", handleDragEnter);
+      document.removeEventListener("dragleave", handleDragLeave);
+      document.removeEventListener("dragover", handleDragOver);
+      document.removeEventListener("drop", handleDrop);
+    };
+  }, []);
+
   async function createBatchRun(sourceId = "raw_ee2029d2f4ef") {
     setBatchMessage("");
     setError("");
@@ -1016,49 +1201,28 @@ function Workbench() {
     }
   }
 
-  const filteredEntities = useMemo(() => {
-    return entities.filter((entity) => {
-      if (filters.entityType && entity.entity_type !== filters.entityType) return false;
-      if (filters.sourceId && !entity.source_ids?.includes(filters.sourceId)) return false;
-      return matchesQuery(entity, filters.query);
-    });
-  }, [entities, filters]);
-
-  const filteredRelationships = useMemo(() => {
-    return relationships.filter((claim) => {
-      if (filters.sourceId && claim.source_id !== filters.sourceId) return false;
-      if (filters.relationType && claim.relation_type !== filters.relationType) return false;
-      if (filters.page && String(claim.page) !== String(filters.page)) return false;
-      return matchesQuery(claim, filters.query);
-    });
-  }, [relationships, filters]);
-
-  const filteredAttitudes = useMemo(() => {
-    return attitudes.filter((claim) => {
-      if (filters.sourceId && claim.source_id !== filters.sourceId) return false;
-      if (filters.attitudeType && claim.attitude_type !== filters.attitudeType) return false;
-      if (filters.polarity && claim.polarity !== filters.polarity) return false;
-      if (filters.page && String(claim.page) !== String(filters.page)) return false;
-      return matchesQuery(claim, filters.query);
-    });
-  }, [attitudes, filters]);
-
   const selectedReadingSource = readingSources.find((source) => source.source_id === selectedReadingSourceId);
   const recentReadingSources = recentReadingSourceIds
     .map((sourceId) => readingSources.find((source) => source.source_id === sourceId))
     .filter(Boolean);
+
   const activeCount = {
     reading: selectedReadingSource?.ocr_pages?.length || 0,
-    interactive_desk: entities.length,
     batch: batchPages.length,
-    entities: filteredEntities.length,
-    relationships: filteredRelationships.length,
-    attitudes: filteredAttitudes.length,
-    editor: editableArtifacts.length,
-  }[activeTab];
+  }[activeTab] || 0;
+
 
   return (
     <main className="appShell sidebar-collapsed">
+      {isDragging && (
+        <div className="dragDropOverlay">
+          <div className="dragDropContent">
+            <Upload size={48} />
+            <h3>Drop your PDF or ZIP file here to import</h3>
+            <p>Supports PDFs and ZIPs containing images</p>
+          </div>
+        </div>
+      )}
 
       <section className="workspace">
         <header className="topbar">
@@ -1161,6 +1325,26 @@ function Workbench() {
             {activeProject !== "default" && (
               <>
                 <button
+                  onClick={() => setShowProjectNoteModal(true)}
+                  title="View/Edit Project Notes & Research Context"
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "var(--text-secondary)",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: 4,
+                    borderRadius: 4,
+                    transition: "background 0.2s",
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.background = "var(--bg-surface-elevated)"}
+                  onMouseOut={(e) => e.currentTarget.style.background = "transparent"}
+                >
+                  <NotebookPen size={16} />
+                </button>
+                <button
                   onClick={handleRenameProject}
                   title="Rename current project"
                   style={{
@@ -1237,11 +1421,14 @@ function Workbench() {
             onSaveOcr={saveOcrReview}
             onSaveEvidence={saveDeskEvidence}
             onImportPdf={importReadingPdf}
-            onRenameSource={handleRenameSource}
+            onRenameSource={handleOpenSourceMetadata}
             onDeleteSource={handleDeleteSource}
             onReloadPage={() => loadReadingPage(selectedReadingSourceId, selectedReadingPage)}
             searchTerm={readingSearchTerm}
             setSearchTerm={setReadingSearchTerm}
+            pageNoteText={pageNoteText}
+            onPageNoteTextChange={setPageNoteText}
+            onSavePageNote={savePageNoteText}
           />
         )}
 
@@ -1251,6 +1438,7 @@ function Workbench() {
             selectedRunId={selectedBatchRunId}
             pages={batchPages}
             selectedPage={selectedBatchPage}
+            ocrEngines={ocrEngines}
             message={batchMessage}
             onRunChange={(runId) => {
               setSelectedBatchRunId(runId);
@@ -1270,248 +1458,7 @@ function Workbench() {
         )}
       </section>
 
-      {/* Spreadsheet Hand-Editing Modals */}
-      {editingEntity && (
-        <div className="customModalOverlay">
-          <div className="customModal">
-            <h3 className="customModalTitle">Edit Entity</h3>
-            <div className="customModalBody">
-              <label className="deskField">
-                <span>Canonical Name</span>
-                <input 
-                  type="text" 
-                  value={editingEntity.canonical_name || ""} 
-                  onChange={(e) => setEditingEntity({ ...editingEntity, canonical_name: e.target.value })}
-                />
-              </label>
-              <label className="deskField">
-                <span>Name (Original)</span>
-                <input 
-                  type="text" 
-                  value={editingEntity.name_original || ""} 
-                  onChange={(e) => setEditingEntity({ ...editingEntity, name_original: e.target.value })}
-                />
-              </label>
-              <CategorySelector
-                label="Type"
-                value={editingEntity.entity_type || "person"}
-                onChange={(val) => setEditingEntity({ ...editingEntity, entity_type: val })}
-                types={entityTypes}
-                setTypes={setEntityTypes}
-                isEntity={true}
-              />
-              <label className="deskField">
-                <span>Aliases (Comma separated)</span>
-                <input 
-                  type="text" 
-                  value={editingEntity.aliasesString || ""} 
-                  onChange={(e) => setEditingEntity({ ...editingEntity, aliasesString: e.target.value })}
-                />
-              </label>
-              <label className="deskField">
-                <span>Notes</span>
-                <textarea 
-                  value={editingEntity.notes || ""} 
-                  onChange={(e) => setEditingEntity({ ...editingEntity, notes: e.target.value })}
-                />
-              </label>
-            </div>
-            <div className="customModalActions">
-              <button className="quietButton light" onClick={() => setEditingEntity(null)}>Cancel</button>
-              <button 
-                className="primaryButton" 
-                onClick={() => handleUpdateEntity({
-                  ...editingEntity,
-                  aliases: editingEntity.aliasesString.split(",").map(a => a.trim()).filter(Boolean)
-                })}
-              >
-                Save Changes
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {editingRelationship && (
-        <div className="customModalOverlay">
-          <div className="customModal">
-            <h3 className="customModalTitle">Edit Relationship Claim</h3>
-            <div className="customModalBody">
-              <label className="deskField">
-                <span>Subject Name</span>
-                <input 
-                  type="text" 
-                  value={editingRelationship.subject_name || ""} 
-                  onChange={(e) => setEditingRelationship({ ...editingRelationship, subject_name: e.target.value })}
-                />
-              </label>
-              <CategorySelector
-                label="Relation Type"
-                value={editingRelationship.relation_type || "spouse"}
-                onChange={(val) => setEditingRelationship({ ...editingRelationship, relation_type: val })}
-                types={relationTypes}
-                setTypes={setRelationTypes}
-                isEntity={false}
-              />
-              <label className="deskField">
-                <span>Object Name</span>
-                <input 
-                  type="text" 
-                  value={editingRelationship.object_name || ""} 
-                  onChange={(e) => setEditingRelationship({ ...editingRelationship, object_name: e.target.value })}
-                />
-              </label>
-              <label className="deskField">
-                <span>Confidence</span>
-                <select 
-                  value={editingRelationship.confidence || "medium"} 
-                  onChange={(e) => setEditingRelationship({ ...editingRelationship, confidence: e.target.value })}
-                >
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
-                </select>
-              </label>
-              <label className="deskField">
-                <span>Note</span>
-                <textarea 
-                  value={editingRelationship.note || ""} 
-                  onChange={(e) => setEditingRelationship({ ...editingRelationship, note: e.target.value })}
-                />
-              </label>
-            </div>
-            <div className="customModalActions">
-              <button className="quietButton light" onClick={() => setEditingRelationship(null)}>Cancel</button>
-              <button 
-                className="primaryButton" 
-                onClick={() => handleUpdateRelationship({
-                  source_id: editingRelationship.source_id,
-                  relationship_id: editingRelationship.relationship_id,
-                  relation_type: editingRelationship.relation_type,
-                  confidence: editingRelationship.confidence,
-                  note: editingRelationship.note,
-                  page: editingRelationship.page,
-                  evidence_id: editingRelationship.evidence_id,
-                  quote: editingRelationship.quote,
-                  subject: {
-                    entity_id: editingRelationship.subject_entity_id,
-                    name: editingRelationship.subject_name,
-                    entity_type: editingRelationship.subject_type || "person"
-                  },
-                  object: {
-                    entity_id: editingRelationship.object_entity_id,
-                    name: editingRelationship.object_name,
-                    entity_type: editingRelationship.object_type || "person"
-                  }
-                })}
-              >
-                Save Changes
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {editingAttitude && (
-        <div className="customModalOverlay">
-          <div className="customModal">
-            <h3 className="customModalTitle">Edit Attitude Claim</h3>
-            <div className="customModalBody">
-              <label className="deskField">
-                <span>Speaker Name</span>
-                <input 
-                  type="text" 
-                  value={editingAttitude.speaker_name || ""} 
-                  onChange={(e) => setEditingAttitude({ ...editingAttitude, speaker_name: e.target.value })}
-                />
-              </label>
-              <label className="deskField">
-                <span>Attitude Type</span>
-                <input 
-                  type="text" 
-                  value={editingAttitude.attitude_type || ""} 
-                  onChange={(e) => setEditingAttitude({ ...editingAttitude, attitude_type: e.target.value })}
-                />
-              </label>
-              <label className="deskField">
-                <span>Polarity</span>
-                <select 
-                  value={editingAttitude.polarity || "positive"} 
-                  onChange={(e) => setEditingAttitude({ ...editingAttitude, polarity: e.target.value })}
-                >
-                  <option value="positive">Positive</option>
-                  <option value="negative">Negative</option>
-                  <option value="neutral">Neutral</option>
-                </select>
-              </label>
-              <label className="deskField">
-                <span>Target Name</span>
-                <input 
-                  type="text" 
-                  value={editingAttitude.target_name || ""} 
-                  onChange={(e) => setEditingAttitude({ ...editingAttitude, target_name: e.target.value })}
-                />
-              </label>
-              <label className="deskField">
-                <span>Confidence</span>
-                <select 
-                  value={editingAttitude.confidence || "medium"} 
-                  onChange={(e) => setEditingAttitude({ ...editingAttitude, confidence: e.target.value })}
-                >
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
-                </select>
-              </label>
-              <label className="deskField">
-                <span>Note</span>
-                <textarea 
-                  value={editingAttitude.note || ""} 
-                  onChange={(e) => setEditingAttitude({ ...editingAttitude, note: e.target.value })}
-                />
-              </label>
-            </div>
-            <div className="customModalActions">
-              <button className="quietButton light" onClick={() => setEditingAttitude(null)}>Cancel</button>
-              <button 
-                className="primaryButton" 
-                onClick={() => handleUpdateAttitude({
-                  source_id: editingAttitude.source_id,
-                  attitude_id: editingAttitude.attitude_id,
-                  attitude_type: editingAttitude.attitude_type,
-                  polarity: editingAttitude.polarity,
-                  confidence: editingAttitude.confidence,
-                  note: editingAttitude.note,
-                  page: editingAttitude.page,
-                  evidence_id: editingAttitude.evidence_id,
-                  quote: editingAttitude.quote,
-                  speaker: {
-                    entity_id: editingAttitude.speaker_entity_id,
-                    name: editingAttitude.speaker_name,
-                    entity_type: editingAttitude.speaker_type || "person"
-                  },
-                  target: {
-                    entity_id: editingAttitude.target_entity_id,
-                    name: editingAttitude.target_name,
-                    entity_type: editingAttitude.target_type || "person"
-                  }
-                })}
-              >
-                Save Changes
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {evidence && <EvidenceDrawer evidence={evidence} onClose={() => setEvidence(null)} onJumpToReadingDesk={jumpToReadingPage} />}
-      <MergeEntitiesModal 
-        isOpen={mergeModalOpen} 
-        onClose={() => setMergeModalOpen(false)} 
-        entities={entities} 
-        onMerge={handleMergeEntities} 
-        initialTargetId={mergeInitialTargetId} 
-      />
       {showNewProjectModal && (
         <div style={{
           position: "fixed",
@@ -1635,7 +1582,342 @@ function Workbench() {
           </div>
         </div>
       )}
+
+      {showProjectNoteModal && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: "rgba(0, 0, 0, 0.4)",
+          backdropFilter: "blur(4px)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 9999,
+        }}>
+          <div style={{
+            background: "var(--bg-surface, #fff)",
+            padding: 24,
+            borderRadius: 12,
+            border: "1px solid var(--border-color)",
+            boxShadow: "0 8px 32px rgba(0, 0, 0, 0.15)",
+            width: 600,
+            maxWidth: "90%",
+          }}>
+            <h3 style={{ marginTop: 0, marginBottom: 16, fontSize: 18, fontWeight: 600 }}>Project Research Notes & Context</h3>
+            <div style={{ marginBottom: 12, fontSize: "0.85rem", color: "var(--text-secondary)" }}>
+              Define the overarching context and research goals of the active project. These notes will be embedded as YAML frontmatter in Markdown exports.
+            </div>
+            <textarea
+              value={projectNoteText}
+              onChange={(e) => setProjectNoteText(e.target.value)}
+              placeholder="Enter project description, historical context, sources list, translation guides, or notes..."
+              style={{
+                width: "100%",
+                height: 300,
+                padding: "8px 12px",
+                borderRadius: 6,
+                border: "1px solid var(--border-color)",
+                marginBottom: 16,
+                fontSize: 14,
+                boxSizing: "border-box",
+                background: "var(--bg-surface-elevated, #fff)",
+                color: "var(--text-primary)",
+                resize: "vertical",
+                fontFamily: "inherit"
+              }}
+            />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
+              <button
+                className="quietButton"
+                onClick={() => setShowProjectNoteModal(false)}
+                style={{ padding: "8px 16px", borderRadius: 6 }}
+              >
+                Cancel
+              </button>
+              <button
+                className="primaryButton"
+                onClick={() => saveProjectNote(activeProject, projectNoteText)}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: 6,
+                  background: "var(--color-primary, #1e40af)",
+                  color: "#fff",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                Save Notes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSourceMetadataModal && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: "rgba(0, 0, 0, 0.4)",
+          backdropFilter: "blur(4px)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 9999,
+        }}>
+          <div style={{
+            background: "var(--bg-surface, #fff)",
+            padding: 24,
+            borderRadius: 12,
+            border: "1px solid var(--border-color)",
+            boxShadow: "0 8px 32px rgba(0, 0, 0, 0.15)",
+            width: 550,
+            maxWidth: "90%",
+          }}>
+            <h3 style={{ marginTop: 0, marginBottom: 16, fontSize: 18, fontWeight: 600 }}>Edit Source Metadata</h3>
+            
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 16 }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-secondary)" }}>Title</span>
+                <input
+                  type="text"
+                  value={metaTitle}
+                  onChange={(e) => setMetaTitle(e.target.value)}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 6,
+                    border: "1px solid var(--border-color)",
+                    background: "var(--bg-surface-elevated, #fff)",
+                    color: "var(--text-primary)",
+                    fontSize: 14
+                  }}
+                />
+              </label>
+
+              <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-secondary)" }}>Collection / Volume</span>
+                <input
+                  type="text"
+                  value={metaCollection}
+                  onChange={(e) => setMetaCollection(e.target.value)}
+                  placeholder="e.g. Imperial Shōgunate Biographies, Vol. 4"
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 6,
+                    border: "1px solid var(--border-color)",
+                    background: "var(--bg-surface-elevated, #fff)",
+                    color: "var(--text-primary)",
+                    fontSize: 14
+                  }}
+                />
+              </label>
+
+              <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-secondary)" }}>Bibliographic Citation</span>
+                <input
+                  type="text"
+                  value={metaCitation}
+                  onChange={(e) => setMetaCitation(e.target.value)}
+                  placeholder="e.g. Tokyo: National Diet Library, 1923"
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 6,
+                    border: "1px solid var(--border-color)",
+                    background: "var(--bg-surface-elevated, #fff)",
+                    color: "var(--text-primary)",
+                    fontSize: 14
+                  }}
+                />
+              </label>
+
+              <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-secondary)" }}>Source-level Research Notes</span>
+                <textarea
+                  value={metaNotes}
+                  onChange={(e) => setMetaNotes(e.target.value)}
+                  placeholder="Context of this specific source document, archival details, provenance history..."
+                  style={{
+                    height: 120,
+                    padding: "8px 12px",
+                    borderRadius: 6,
+                    border: "1px solid var(--border-color)",
+                    background: "var(--bg-surface-elevated, #fff)",
+                    color: "var(--text-primary)",
+                    fontSize: 14,
+                    resize: "vertical",
+                    fontFamily: "inherit"
+                  }}
+                />
+              </label>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
+              <button
+                className="quietButton"
+                onClick={() => setShowSourceMetadataModal(false)}
+                style={{ padding: "8px 16px", borderRadius: 6 }}
+              >
+                Cancel
+              </button>
+              <button
+                className="primaryButton"
+                onClick={handleSaveSourceMetadata}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: 6,
+                  background: "var(--color-primary, #1e40af)",
+                  color: "#fff",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
+  );
+}
+
+interface EngineOption {
+  name: string;
+  label: string;
+  type: "select" | "boolean";
+  default: any;
+  choices?: { value: string; label: string }[];
+}
+
+interface OcrEngine {
+  engine_id: string;
+  label: string;
+  options_schema?: EngineOption[];
+}
+
+interface DynamicEngineSettingsProps {
+  engineId: string;
+  engines: OcrEngine[];
+  settings: Record<string, any>;
+  onChange: (key: string, value: any) => void;
+  layout?: "vertical" | "horizontal";
+}
+
+function DynamicEngineSettings({
+  engineId,
+  engines,
+  settings,
+  onChange,
+  layout = "horizontal",
+}: DynamicEngineSettingsProps) {
+  const engine = (engines || []).find((e) => e.engine_id === engineId);
+  if (!engine || !engine.options_schema || engine.options_schema.length === 0) {
+    return null;
+  }
+
+  const containerStyle: React.CSSProperties =
+    layout === "vertical"
+      ? {
+          display: "flex",
+          flexDirection: "column",
+          gap: "8px",
+          padding: "10px",
+          backgroundColor: "var(--bg-light, #f7f5f0)",
+          border: "1px solid var(--border-color, #e1dacd)",
+          borderRadius: "4px",
+          fontSize: "12px",
+          width: "100%",
+          boxSizing: "border-box",
+        }
+      : {
+          display: "flex",
+          alignItems: "center",
+          gap: "12px",
+          padding: "8px 16px",
+          backgroundColor: "var(--bg-light, #f7f5f0)",
+          borderBottom: "1px solid var(--border-color, #e1dacd)",
+          fontSize: "12px",
+          width: "100%",
+          boxSizing: "border-box",
+        };
+
+  return (
+    <div style={containerStyle}>
+      <div style={{ fontWeight: "bold" }}>
+        {engine.label} Options{layout === "horizontal" ? ":" : ""}
+      </div>
+      <div
+        style={{
+          display: "flex",
+          gap: "10px",
+          flexWrap: "wrap",
+          alignItems: "center",
+        }}
+      >
+        {engine.options_schema.map((opt) => {
+          const val = settings[opt.name] !== undefined ? settings[opt.name] : opt.default;
+          if (opt.type === "select") {
+            return (
+              <label
+                key={opt.name}
+                style={{
+                  display: "flex",
+                  flexDirection: layout === "vertical" ? "column" : "row",
+                  alignItems: layout === "vertical" ? "flex-start" : "center",
+                  gap: "2px",
+                }}
+              >
+                <span style={layout === "vertical" ? { fontSize: "11px", color: "#666" } : undefined}>
+                  {opt.label}
+                </span>
+                <select
+                  value={val}
+                  onChange={(e) => onChange(opt.name, e.target.value)}
+                  style={{
+                    padding: "2px",
+                    borderRadius: "3px",
+                    border: "1px solid var(--border-color, #e1dacd)",
+                  }}
+                >
+                  {opt.choices?.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            );
+          } else if (opt.type === "boolean") {
+            return (
+              <label
+                key={opt.name}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  cursor: "pointer",
+                  height: layout === "vertical" ? "24px" : "auto",
+                  alignSelf: layout === "vertical" ? "flex-end" : "auto",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={!!val}
+                  onChange={(e) => onChange(opt.name, e.target.checked)}
+                />
+                <span>{opt.label}</span>
+              </label>
+            );
+          }
+          return null;
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -1644,6 +1926,7 @@ function BatchReview({
   selectedRunId,
   pages,
   selectedPage,
+  ocrEngines,
   message,
   onRunChange,
   onCreateRun,
@@ -1657,213 +1940,50 @@ function BatchReview({
   sources,
   onRefresh,
 }) {
-  const [filters, setFilters] = useState({ source_id: "", page: "", candidate_type: "", status: "", ocr_status: "" });
-  const [draftPage, setDraftPage] = useState(null);
-  const [showRejected, setShowRejected] = useState(false);
-
-  // Redesign: Local state for Left Panel configuration placeholders
   const [selectedSourceId, setSelectedSourceId] = useState("");
   const [selectedOcrMethod, setSelectedOcrMethod] = useState("ndlocr_lite");
-  const [selectedNlpMethod, setSelectedNlpMethod] = useState("gliner");
-  const [glinerLabels, setGlinerLabels] = useState("person, place, organization, group, event, document");
-  const [glinerRelations, setGlinerRelations] = useState("spouse, parent, child, colleague, employer, opponent, ally");
-  const [slmPrompt, setSlmPrompt] = useState("Extract all entities, relationships, and evidence quotes from this text in Japanese.");
-  const [llmPrompt, setLlmPrompt] = useState("Identify all key actors, organizations, relationships, and supporting evidence quotes.");
+  const [ocrSettings, setOcrSettings] = useState<Record<string, any>>({});
   const [runProgress, setRunProgress] = useState("");
 
-  // Accordion expanded state for quote cards
-  const [expandedQuotes, setExpandedQuotes] = useState({});
+  // Keep logs of the active run status updates
+  const [logs, setLogs] = useState<string[]>([]);
+  const lastStatus = useRef("");
+
+  const activeRun = runs.find((run) =>
+    run.status === "processing" ||
+    (run.status && (
+      run.status.startsWith("Installing") ||
+      run.status.startsWith("Loading") ||
+      run.status.startsWith("Running") ||
+      run.status.startsWith("Text") ||
+      run.status.includes("/")
+    ))
+  );
 
   useEffect(() => {
-    setDraftPage(selectedPage ? JSON.parse(JSON.stringify(selectedPage)) : null);
-  }, [selectedPage]);
+    // Clear logs when active run changes
+    setLogs([]);
+    lastStatus.current = "";
+  }, [activeRun?.run_id]);
 
-  const selectedRun = runs.find((run) => run.run_id === selectedRunId);
-
-  function updateFilter(name, value) {
-    const next = { ...filters, [name]: value };
-    setFilters(next);
-    onLoadPages(selectedRunId, next);
-  }
-
-  function pageWithCandidateUpdate(page, group, candidateId, updates) {
-    if (!page) return null;
-    return {
-      ...page,
-      [group]: page[group].map((candidate) => (
-        candidate.candidate_id === candidateId ? { ...candidate, ...updates } : candidate
-      )),
-    };
-  }
-
-  function updateCandidate(group, candidateId, updates) {
-    setDraftPage((current) => pageWithCandidateUpdate(current, group, candidateId, updates));
-  }
-
-  async function setCandidateStatus(group, candidateId, status) {
-    const next = pageWithCandidateUpdate(draftPage, group, candidateId, {
-      review_status: status,
-      promotion_skip_reason: "",
-      promotion_message: "",
-    });
-    if (!next) return;
-    setDraftPage(next);
-    await onSavePage(next, { quiet: true });
-    if (status === "approved") {
-      await onPromote(next.run_id, next.source_id, next.page);
+  useEffect(() => {
+    if (activeRun?.status) {
+      const status = activeRun.status;
+      if (status !== lastStatus.current) {
+        setLogs((prev) => {
+          if (prev.includes(status)) return prev;
+          return [...prev, status];
+        });
+        lastStatus.current = status;
+      }
     }
-  }
-
-  const toggleQuoteExpanded = (quoteId) => {
-    setExpandedQuotes((prev) => ({ ...prev, [quoteId]: !prev[quoteId] }));
-  };
-
-  function structuredTextUpdate(candidate, value) {
-    const kind = candidate.kind || candidate.candidate_type;
-    const updates: FlexibleRecord = { label: value };
-    if (kind === "entity" || kind === "place") {
-      updates.entity_name = value;
-      updates.entity = { ...(candidate.entity || {}), name: value };
-    } else if (kind === "keyword") {
-      updates.keyword = value;
-    } else if (kind === "claim") {
-      updates.claim = { ...(candidate.claim || {}), text: value };
-    } else if (kind === "note") {
-      updates.note = value;
-    }
-    return updates;
-  }
-
-  function relationshipEditor(candidate) {
-    const relationship = candidate.relationship || {};
-    const subject = relationship.subject || {};
-    const objectRecord = relationship.object || {};
-    return (
-      <div className="candidateMiniGrid">
-        <label>
-          <span>Subject</span>
-          <input
-            value={subject.name || ""}
-            onChange={(event) => updateCandidate("structured_candidates", candidate.candidate_id, {
-              relationship: { ...relationship, subject: { ...subject, name: event.target.value } },
-            })}
-          />
-        </label>
-        <label>
-          <span>Relation</span>
-          <input
-            value={relationship.relation_type || ""}
-            onChange={(event) => updateCandidate("structured_candidates", candidate.candidate_id, {
-              relationship: { ...relationship, relation_type: event.target.value },
-            })}
-            placeholder="e.g. criticism, affiliation"
-          />
-        </label>
-        <label>
-          <span>Object</span>
-          <input
-            value={objectRecord.name || ""}
-            onChange={(event) => updateCandidate("structured_candidates", candidate.candidate_id, {
-              relationship: { ...relationship, object: { ...objectRecord, name: event.target.value } },
-            })}
-          />
-        </label>
-      </div>
-    );
-  }
-
-  function attitudeEditor(candidate) {
-    const attitude = candidate.attitude || {};
-    const speaker = attitude.speaker || {};
-    const target = attitude.target || {};
-    return (
-      <div className="candidateMiniGrid">
-        <label>
-          <span>Speaker</span>
-          <input
-            value={speaker.name || ""}
-            onChange={(event) => updateCandidate("structured_candidates", candidate.candidate_id, {
-              attitude: { ...attitude, speaker: { ...speaker, name: event.target.value } },
-            })}
-          />
-        </label>
-        <label>
-          <span>Attitude</span>
-          <input
-            value={attitude.attitude_type || ""}
-            onChange={(event) => updateCandidate("structured_candidates", candidate.candidate_id, {
-              attitude: { ...attitude, attitude_type: event.target.value },
-            })}
-            placeholder="e.g. criticism, support"
-          />
-        </label>
-        <label>
-          <span>Polarity</span>
-          <select
-            value={attitude.polarity || ""}
-            onChange={(event) => updateCandidate("structured_candidates", candidate.candidate_id, {
-              attitude: { ...attitude, polarity: event.target.value },
-            })}
-          >
-            <option value="">Choose</option>
-            <option value="positive">positive</option>
-            <option value="negative">negative</option>
-            <option value="neutral">neutral</option>
-            <option value="mixed">mixed</option>
-          </select>
-        </label>
-        <label>
-          <span>Target</span>
-          <input
-            value={target.name || ""}
-            onChange={(event) => updateCandidate("structured_candidates", candidate.candidate_id, {
-              attitude: { ...attitude, target: { ...target, name: event.target.value } },
-            })}
-          />
-        </label>
-      </div>
-    );
-  }
-
-  function visibleCandidate(candidate) {
-    return showRejected || candidate.review_status !== "rejected";
-  }
-
-  function candidateActions(group, candidate) {
-    const status = candidate.review_status || "candidate";
-    if (status === "rejected" || status === "promoted") {
-      return (
-        <button className="quietButton light" type="button" onClick={() => setCandidateStatus(group, candidate.candidate_id, "candidate")}>
-          Undo
-        </button>
-      );
-    }
-    return (
-      <>
-        <button
-          className={status === "approved" ? "primaryButton" : "quietButton light"}
-          type="button"
-          onClick={() => setCandidateStatus(group, candidate.candidate_id, "approved")}
-        >
-          Approve
-        </button>
-        <button className="quietButton light dangerButton" type="button" onClick={() => setCandidateStatus(group, candidate.candidate_id, "rejected")}>
-          Reject
-        </button>
-      </>
-    );
-  }
-
-  const quoteCandidates = (draftPage?.quote_candidates || []).filter(visibleCandidate);
-  const structuredCandidates = (draftPage?.structured_candidates || []).filter(visibleCandidate);
-  const displayedOcrLayer = draftPage?.displayed_ocr_layer || draftPage?.ocr_layer || "none";
-  const latestOcrLayer = draftPage?.latest_available_ocr_layer || "none";
+  }, [activeRun?.status]);
 
   return (
-    <div className="batchReviewGrid">
-      <section className="panel batchQueuePanel">
+    <div className="batchReviewGrid" style={{ display: "grid", gridTemplateColumns: "minmax(320px, 1fr) minmax(480px, 1.2fr)", gap: "16px" }}>
+      <section className="panel batchQueuePanel" style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
         <PanelTitle icon={<Database size={18} />} title="Batch Processing Control" />
-        <p className="muted" style={{ marginBottom: "14px" }}>
+        <p className="muted" style={{ marginBottom: "6px" }}>
           Configure batch extraction for a whole source document (PDF/ZIP).
         </p>
 
@@ -1871,7 +1991,6 @@ function BatchReview({
           display: "flex",
           flexDirection: "column",
           gap: "14px",
-          marginBottom: "24px",
           padding: "16px",
           background: "var(--bg-surface-elevated, #fcfbf9)",
           borderRadius: "8px",
@@ -1893,14 +2012,25 @@ function BatchReview({
             <span>OCR Method</span>
             <select value={selectedOcrMethod} onChange={(e) => setSelectedOcrMethod(e.target.value)}>
               <option value="none">None (Skip OCR / Use existing OCR)</option>
-              <option value="ndlocr_lite">NDLOCR-Lite (Local)</option>
-              <option value="vision_llm_gemini">Google Gemini API</option>
-              <option value="vision_llm_openai">OpenAI GPT-4o</option>
-              <option value="vision_llm_anthropic">Anthropic Claude API</option>
+              {(ocrEngines || []).map((eng) => {
+                const engineId = typeof eng === "string" ? eng : (eng?.engine_id || "");
+                const label = typeof eng === "string" ? eng : (eng?.label || engineId);
+                return (
+                  <option key={engineId} value={engineId}>
+                    {label}
+                  </option>
+                );
+              })}
             </select>
           </label>
 
-
+          <DynamicEngineSettings
+            engineId={selectedOcrMethod}
+            engines={ocrEngines}
+            settings={ocrSettings}
+            onChange={(name, val) => setOcrSettings((prev) => ({ ...prev, [name]: val }))}
+            layout="vertical"
+          />
 
           <button
             className="primaryButton"
@@ -1908,18 +2038,25 @@ function BatchReview({
             onClick={async () => {
               try {
                 setRunProgress("Starting batch OCR background task...");
+                const activeEngine = ocrEngines.find((e) => e.engine_id === selectedOcrMethod);
+                const engineSettings: Record<string, any> = {};
+                if (activeEngine?.options_schema) {
+                  activeEngine.options_schema.forEach((opt) => {
+                    const val = ocrSettings[opt.name] !== undefined ? ocrSettings[opt.name] : opt.default;
+                    engineSettings[opt.name] = val;
+                  });
+                }
                 const res = await fetchJson("/api/batch/extract", {
                   method: "POST",
                   body: JSON.stringify({
                     source_id: selectedSourceId,
                     ocr_engine: selectedOcrMethod,
                     nlp_method: "none",
+                    ...engineSettings,
                   }),
                 });
                 setRunProgress(`Task started: ${res.message || res.run_id}`);
                 if (res.run_id) {
-                  onRunChange(res.run_id);
-                  onLoadPages(res.run_id);
                   if (onRefresh) {
                     await onRefresh();
                   }
@@ -1941,340 +2078,144 @@ function BatchReview({
               {runProgress}
             </div>
           )}
-
-          {(() => {
-            const activeRun = runs.find(run => 
-              run.status === "processing" || 
-              (run.status && (
-                run.status.startsWith("Installing") || 
-                run.status.startsWith("Loading") || 
-                run.status.startsWith("Running") || 
-                run.status.startsWith("Text") || 
-                run.status.includes("/")
-              ))
-            );
-            if (activeRun) {
-              const pct = getStatusPercent(activeRun.status);
-              return (
-                <div style={{ padding: "12px", background: "var(--bg-surface-elevated, #fcfbf9)", border: "1px solid var(--border-color)", borderRadius: 6, marginTop: 12 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, fontWeight: 600, color: "var(--text-primary)" }}>
-                    <span>Active Run Status</span>
-                    <span>{pct}%</span>
-                  </div>
-                  <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 4, fontStyle: "italic" }}>
-                    {activeRun.status}
-                  </div>
-                  <div className="progressBarContainer" style={{ background: "var(--border-color-light, #f5f5f5)", borderRadius: 4, height: 6, width: "100%", overflow: "hidden", marginTop: 8 }}>
-                    <div className="progressBarFill" style={{ background: "var(--accent-primary, #7d3d2f)", width: `${pct}%`, height: "100%", transition: "width 0.3s ease" }} />
-                  </div>
-                </div>
-              );
-            }
-            return null;
-          })()}
-        </div>
-
-        <div style={{ borderTop: "1px solid var(--border-color, #e1dacd)", paddingTop: "16px" }}>
-          <PanelTitle icon={<Database size={16} />} title="Batch Review Queue" />
-          <p className="muted">Select a provisional run and page below to review candidate extractions.</p>
-          
-          <div className="readerActions" style={{ margin: "12px 0" }}>
-            <button className="primaryButton" type="button" onClick={() => onCreateRun()}>
-              Create sample run
-            </button>
-            <button className="quietButton light" type="button" onClick={() => onPromote(selectedRunId)}>
-              Save approved items
-            </button>
-            <button className="quietButton light dangerButton" type="button" onClick={() => onDeleteRun(selectedRunId)} disabled={!selectedRunId}>
-              Delete run
-            </button>
-          </div>
-          {message && <div className={isPositiveMessage(message) ? "successBanner" : "errorBanner inline"}>{message}</div>}
-
-          <label className="deskField">
-            <span>Select Batch Run</span>
-            <select value={selectedRunId} onChange={(event) => onRunChange(event.target.value)}>
-              <option value="">Choose a batch run</option>
-              {runs.map((run) => (
-                <option key={run.run_id} value={run.run_id}>
-                  {batchRunLabel(run)}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          {selectedRun && (
-            <>
-              <dl className="compactMeta tight" style={{ marginBottom: "12px" }}>
-                <div><dt>Status</dt><dd>{selectedRun.status}</dd></div>
-                <div><dt>Relevant pages</dt><dd>{batchRunRelevantCount(selectedRun)} of {selectedRun.counts?.pages || 0}</dd></div>
-                <div><dt>Suggested quotes</dt><dd>{selectedRun.counts?.quote_candidates || 0}</dd></div>
-                <div><dt>Approved</dt><dd>{selectedRun.counts?.approved_candidates || 0}</dd></div>
-              </dl>
-              {(() => {
-                const pct = getStatusPercent(selectedRun.status);
-                if (pct >= 0 && selectedRun.status) {
-                  return (
-                    <div style={{ marginBottom: 12, marginTop: -6 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4 }}>
-                        <span>Progress</span>
-                        <span>{pct}%</span>
-                      </div>
-                      <div className="progressBarContainer" style={{ background: "var(--border-color, #e1dacd)", borderRadius: 4, height: 8, width: "100%", overflow: "hidden" }}>
-                        <div className="progressBarFill" style={{ background: "var(--accent-primary, #7d3d2f)", width: `${pct}%`, height: "100%", transition: "width 0.3s ease" }} />
-                      </div>
-                    </div>
-                  );
-                }
-                return null;
-              })()}
-              <details className="runDetails">
-                <summary>Run details</summary>
-                <dl className="compactMeta tight">
-                  <div><dt>Run ID</dt><dd>{selectedRun.run_id}</dd></div>
-                  <div><dt>Created</dt><dd>{selectedRun.created_at || "unknown"}</dd></div>
-                  <div><dt>Updated</dt><dd>{selectedRun.updated_at || "unknown"}</dd></div>
-                  <div><dt>OCR engine</dt><dd>{selectedRun.ocr_engine || "unknown"}</dd></div>
-                </dl>
-              </details>
-            </>
-          )}
-
-          <div className="inlineFields" style={{ marginTop: "12px" }}>
-            <input value={filters.source_id} onChange={(event) => updateFilter("source_id", event.target.value)} placeholder="Source ID" />
-            <input value={filters.page} onChange={(event) => updateFilter("page", event.target.value.replace(/\D/g, ""))} placeholder="Page" />
-          </div>
-
-          <div className="batchPageList" style={{ marginTop: "12px" }}>
-            {pages.map((page) => (
-              <button
-                className="rowButton"
-                type="button"
-                key={`${page.source_id}_${page.page}`}
-                onClick={() => onLoadPage(selectedRunId, page.source_id, page.page)}
-              >
-                <strong>{page.title_original || page.title} p.{page.page}</strong>
-                <span>
-                  {page.ocr_status} · {page.quote_candidate_count} quotes · {page.structured_candidate_count} structured
-                </span>
-              </button>
-            ))}
-            {pages.length === 0 && (
-              <p className="muted">No pages found in this run.</p>
-            )}
-          </div>
         </div>
       </section>
 
       <section className="panel batchPagePanel">
-        <PanelTitle icon={<NotebookPen size={18} />} title="Batch Page Review" />
-        {!draftPage ? (
-          <p className="muted">Select a page from the queue on the left.</p>
+        {activeRun ? (
+          <>
+            <PanelTitle icon={<Database size={18} />} title="Active Batch Process Status" />
+            <div style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "14px",
+              padding: "16px",
+              background: "var(--bg-surface-elevated, #fcfbf9)",
+              borderRadius: "8px",
+              border: "1px solid var(--border-color, #e1dacd)",
+              marginTop: "12px"
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", fontWeight: 600, color: "var(--text-primary)" }}>
+                <span>Run Status ({activeRun.run_id})</span>
+                <span>{getStatusPercent(activeRun.status)}%</span>
+              </div>
+              <div style={{ fontSize: "12px", color: "var(--text-secondary)", fontStyle: "italic", lineHeight: "1.4", wordBreak: "break-word" }}>
+                {activeRun.status}
+              </div>
+              <div className="progressBarContainer" style={{ background: "var(--border-color-light, #f5f5f5)", borderRadius: 4, height: 8, width: "100%", overflow: "hidden" }}>
+                <div className="progressBarFill" style={{ background: "var(--accent-primary, #7d3d2f)", width: `${getStatusPercent(activeRun.status)}%`, height: "100%", transition: "width 0.3s ease" }} />
+              </div>
+              
+              <h4 style={{ marginTop: "14px", marginBottom: "4px", color: "var(--text-primary)", fontSize: "13px" }}>Terminal Progress Messages</h4>
+              <div style={{
+                background: "#172326",
+                color: "#cbd8d5",
+                fontFamily: "monospace",
+                padding: "12px",
+                borderRadius: "6px",
+                height: "220px",
+                overflowY: "auto",
+                fontSize: "12px",
+                lineHeight: "1.5"
+              }}>
+                {logs.map((log, i) => (
+                  <div key={i} style={{ marginBottom: "4px" }}>
+                    &gt; {log}
+                  </div>
+                ))}
+                {logs.length === 0 && (
+                  <div style={{ color: "#718083", fontStyle: "italic" }}>Waiting for progress messages...</div>
+                )}
+              </div>
+              
+              <button
+                className="quietButton light dangerButton"
+                type="button"
+                onClick={async () => {
+                  try {
+                    await fetchJson(`/api/v1/batches/biographies/runs/${activeRun.run_id}/stop`, {
+                      method: "POST"
+                    });
+                    if (onRefresh) {
+                      await onRefresh();
+                    }
+                  } catch (err) {
+                    console.error("Stopping run failed:", err);
+                  }
+                }}
+                style={{ marginTop: "8px", width: "100%", justifyContent: "center" }}
+              >
+                Stop Batch Process
+              </button>
+            </div>
+          </>
         ) : (
           <>
-            <div className="statusBadgeRow">
-              <span className="statusBadge warning">Batch candidate</span>
-              <span className="statusBadge success">Promoted only after approval</span>
-              <span className="statusBadge info">Showing {displayedOcrLayer} OCR</span>
-              {draftPage.worker_ai_status && <span className="statusBadge info">Worker: {draftPage.worker_ai_status}</span>}
-              {draftPage.ocr_is_stale && <span className="statusBadge warning">Corrected OCR available</span>}
-              {draftPage.ocr_review_status === "edited" && <span className="statusBadge warning">Batch OCR edited; not auto-overwritten</span>}
-            </div>
-            <h1>{draftPage.title_original || draftPage.title} · page {draftPage.page}</h1>
-            <dl className="compactMeta tight" style={{ marginBottom: "20px" }}>
-              <div><dt>Displayed OCR</dt><dd>{displayedOcrLayer}</dd></div>
-              <div><dt>Displayed path</dt><dd>{draftPage.displayed_ocr_page_json || draftPage.ocr_page_json || "none"}</dd></div>
-              <div><dt>Latest available</dt><dd>{latestOcrLayer}</dd></div>
-              <div><dt>Latest path</dt><dd>{draftPage.latest_available_ocr_page_json || "none"}</dd></div>
-              <div><dt>Network review</dt><dd>{draftPage.network_review_status || "pending"}</dd></div>
-              <div><dt>Analysis</dt><dd>{draftPage.analysis_engine || "local_fallback"}</dd></div>
-              <div><dt>Worker</dt><dd>{draftPage.worker_ai_provider || "none"} {draftPage.worker_ai_model || ""}</dd></div>
-            </dl>
-            {draftPage.worker_ai_message && <p className="muted">{draftPage.worker_ai_message}</p>}
-            {draftPage.ocr_sync_message && <p className="muted">{draftPage.ocr_sync_message}</p>}
+            <PanelTitle icon={<Database size={18} />} title="Batch Process History" />
+            {message && <div className={isPositiveMessage(message) ? "successBanner" : "errorBanner inline"} style={{ marginTop: "12px", marginBottom: "12px" }}>{message}</div>}
             
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", marginTop: "12px" }}>
-              <div className="readerActions" style={{ margin: 0 }}>
-                <button className="primaryButton" type="button" onClick={() => onSavePage(draftPage)}>
-                  Save page draft
-                </button>
-                <button className="quietButton light" type="button" onClick={() => onPromote(draftPage.run_id, draftPage.source_id, draftPage.page, draftPage)}>
-                  Promote approved page items
-                </button>
-              </div>
-              <label className="inlineCheck" style={{ margin: 0 }}>
-                <input type="checkbox" checked={showRejected} onChange={(event) => setShowRejected(event.target.checked)} />
-                <span>Show rejected candidates</span>
-              </label>
-            </div>
+            <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: "10px" }}>
+              {runs.length === 0 ? (
+                <p className="muted">No previous batch runs found.</p>
+              ) : (
+                runs.map((run) => {
+                  const counts = run.counts || {};
+                  const pagesCount = counts.pages || 0;
+                  const sourceTitle = run.sources?.[0]?.title_original || run.sources?.[0]?.title || run.source_ids?.[0] || "Batch run";
+                  
+                  let statusBadge = null;
+                  if (run.status === "completed") {
+                    statusBadge = <span className="statusBadge success" style={{ margin: 0 }}>Completed</span>;
+                  } else if (run.status === "stopped") {
+                    statusBadge = <span className="statusBadge warning" style={{ margin: 0 }}>Stopped</span>;
+                  } else if (run.status && (run.status.toLowerCase().includes("failed") || run.status.toLowerCase().includes("error"))) {
+                    statusBadge = <span className="statusBadge error" style={{ margin: 0 }}>Failed</span>;
+                  } else {
+                    statusBadge = <span className="statusBadge info" style={{ margin: 0 }}>{run.status || "Unknown"}</span>;
+                  }
 
-            <h2>Candidate Evidence Quotes & Entities</h2>
-            <p className="muted" style={{ marginBottom: "12px" }}>
-              Click any quote card to inspect and approve the entities and relationships extracted from it.
-            </p>
-
-            <div className="candidateCardList">
-              {quoteCandidates.length === 0 && (
-                <p className="muted">No quote candidates for this page yet.</p>
-              )}
-              {quoteCandidates.map((candidate) => {
-                const isExpanded = !!expandedQuotes[candidate.candidate_id];
-                // Filter child entities and relations for this quote candidate
-                const children = structuredCandidates.filter(
-                  (c) => c.quote_candidate_id === candidate.candidate_id || c.evidence_id === `batch_${candidate.candidate_id}`
-                );
-
-                return (
-                  <div
-                    className={`candidateCard quote ${isExpanded ? "expanded" : ""} status-${candidate.review_status || "candidate"}`}
-                    key={candidate.candidate_id}
-                    style={{ borderLeft: "4px solid #7d3d2f", cursor: "default" }}
-                  >
-                    <div
-                      onClick={() => toggleQuoteExpanded(candidate.candidate_id)}
-                      style={{ cursor: "pointer", userSelect: "none" }}
+                  return (
+                    <div 
+                      key={run.run_id} 
+                      style={{
+                        padding: "12px 14px",
+                        background: "var(--bg-surface-elevated, #fcfbf9)",
+                        border: "1px solid var(--border-color, #e1dacd)",
+                        borderRadius: "8px",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.02)"
+                      }}
                     >
-                      <div className="candidateCardHeader">
-                        <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                          <strong>QUOTE CANDIDATE</strong> 
-                          <span className={`statusBadge ${candidate.review_status === "approved" ? "success" : candidate.review_status === "rejected" ? "missing" : "warning"}`} style={{ fontSize: "10px", minHeight: "18px", padding: "0 6px" }}>
-                            {candidate.review_status || "pending"}
-                          </span>
-                        </span>
-                        <small>Score {candidate.score ?? "n/a"} (Click to {isExpanded ? "collapse" : "expand"})</small>
-                      </div>
-                      {candidate.promotion_message && <p className="muted" style={{ margin: "4px 0" }}>{candidate.promotion_message}</p>}
-                      {candidate.promotion_skip_reason && <p className="errorText" style={{ margin: "4px 0" }}>{candidate.promotion_skip_reason}</p>}
-                      {candidate.matched_terms?.length > 0 && (
-                        <div className="statusBadgeRow" style={{ marginTop: "4px" }}>
-                          {candidate.matched_terms.slice(0, 6).map((term) => (
-                            <span className="statusBadge info" key={`${candidate.candidate_id}_${term.text}`} style={{ fontSize: "10px" }}>
-                              {term.text} · {term.entity_type}
-                            </span>
-                          ))}
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4px", flex: 1, marginRight: "12px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <strong style={{ fontSize: "13px", color: "var(--text-primary)" }}>{sourceTitle}</strong>
+                          {statusBadge}
                         </div>
-                      )}
-                      <p className="muted" style={{ margin: "4px 0" }}>
-                        {candidate.candidate_reason || "Review suggested passage"}
-                      </p>
-                    </div>
-
-                    <textarea
-                      value={candidate.quote || ""}
-                      onChange={(event) => updateCandidate("quote_candidates", candidate.candidate_id, { quote: event.target.value, label: event.target.value, review_status: "edited" })}
-                      style={{ width: "100%", minHeight: "60px" }}
-                    />
-
-                    <div className="readerActions" style={{ marginTop: "6px" }}>
-                      <button
-                        className="primaryButton"
-                        type="button"
-                        onClick={() => setCandidateStatus("quote_candidates", candidate.candidate_id, "approved")}
-                      >
-                        Approve Quote
-                      </button>
+                        <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
+                          Run ID: <code>{run.run_id}</code> · {formatShortDate(run.created_at)} · {pagesCount} pages
+                        </span>
+                        {run.status !== "completed" && run.status !== "stopped" && !run.status?.toLowerCase().includes("failed") && !run.status?.toLowerCase().includes("error") && (
+                          <span style={{ fontSize: "11px", color: "var(--text-secondary)", fontStyle: "italic" }}>
+                            Detail: {run.status}
+                          </span>
+                        )}
+                      </div>
+                      
                       <button
                         className="quietButton light dangerButton"
                         type="button"
-                        onClick={() => setCandidateStatus("quote_candidates", candidate.candidate_id, "rejected")}
+                        onClick={() => onDeleteRun(run.run_id)}
+                        style={{ padding: "6px 10px", display: "flex", alignItems: "center", gap: "4px" }}
+                        title="Delete this run and all its provisional data"
                       >
-                        Reject Quote
+                        <Trash2 size={14} /> Delete
                       </button>
-                      {onJumpToReadingDesk && (
-                        <button
-                          className="quietButton light"
-                          type="button"
-                          onClick={() => onJumpToReadingDesk(draftPage.source_id, draftPage.page, candidate.quote)}
-                        >
-                          Locate
-                        </button>
-                      )}
                     </div>
-
-                    {isExpanded && (
-                      <div className="childCandidatesSection" style={{
-                        marginTop: "12px",
-                        padding: "12px",
-                        background: "rgba(0, 0, 0, 0.02)",
-                        borderRadius: "6px",
-                        borderTop: "1px solid #e1dacd"
-                      }}>
-                        <h4 style={{ margin: "0 0 10px 0", fontSize: "0.9rem", color: "#7d3d2f" }}>
-                          Extracted Entities & Relations ({children.length})
-                        </h4>
-                        
-                        {children.length === 0 && (
-                          <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>
-                            No nested entities or relations found for this quote.
-                          </p>
-                        )}
-                        
-                        <div style={{ display: "grid", gap: "10px" }}>
-                          {children.map((child) => (
-                            <div
-                              key={child.candidate_id}
-                              style={{
-                                padding: "10px",
-                                background: child.kind === "relationship" ? "#f7f0ed" : child.kind === "place" ? "#f2f7f5" : "#eef3f1",
-                                border: "1px solid #e1dacd",
-                                borderRadius: "6px"
-                              }}
-                            >
-                              <div className="candidateCardHeader" style={{ marginBottom: "6px" }}>
-                                <span style={{ fontSize: "11px", fontWeight: "bold", textTransform: "uppercase", color: "#647174" }}>
-                                  {child.kind || child.candidate_type}
-                                </span>
-                                <span className={`statusBadge ${child.review_status === "approved" ? "success" : child.review_status === "rejected" ? "missing" : "warning"}`} style={{ fontSize: "9px", minHeight: "16px", padding: "0 4px" }}>
-                                  {child.review_status || "pending"}
-                                </span>
-                              </div>
-
-                              {child.promotion_message && <p className="muted" style={{ margin: "4px 0", fontSize: "0.85rem" }}>{child.promotion_message}</p>}
-                              {child.promotion_skip_reason && <p className="errorText" style={{ margin: "4px 0", fontSize: "0.85rem" }}>{child.promotion_skip_reason}</p>}
-
-                              <input
-                                type="text"
-                                value={child.label || child.keyword || child.note || child.quote || ""}
-                                onChange={(event) => updateCandidate("structured_candidates", child.candidate_id, { label: event.target.value, review_status: "edited" })}
-                                style={{
-                                  width: "100%",
-                                  padding: "6px 8px",
-                                  fontSize: "0.9rem",
-                                  borderRadius: "4px",
-                                  border: "1px solid #cfc7ba",
-                                  marginBottom: "8px"
-                                }}
-                              />
-
-                              {child.kind === "relationship" && relationshipEditor(child)}
-                              {child.kind === "attitude" && attitudeEditor(child)}
-
-                              <div style={{ display: "flex", gap: "6px" }}>
-                                <button
-                                  className="primaryButton"
-                                  type="button"
-                                  style={{ padding: "4px 8px", fontSize: "0.8rem", minHeight: "28px" }}
-                                  onClick={() => setCandidateStatus("structured_candidates", child.candidate_id, "approved")}
-                                >
-                                  Approve
-                                </button>
-                                <button
-                                  className="quietButton light dangerButton"
-                                  type="button"
-                                  style={{ padding: "4px 8px", fontSize: "0.8rem", minHeight: "28px" }}
-                                  onClick={() => setCandidateStatus("structured_candidates", child.candidate_id, "rejected")}
-                                >
-                                  Reject
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
           </>
         )}
@@ -2302,8 +2243,12 @@ function ReadingDesk({
   onReloadPage,
   searchTerm,
   setSearchTerm,
+  pageNoteText,
+  onPageNoteTextChange,
+  onSavePageNote,
 }) {
   const imageFrameRef = useRef(null);
+  const [isLocalDragging, setIsLocalDragging] = useState(false);
   const pageWrapRef = useRef(null);
   const backdropRef = useRef(null);
   const pdfContainerRef = useRef(null);
@@ -2324,6 +2269,39 @@ function ReadingDesk({
   const [keywordResults, setKeywordResults] = useState([]);
   const [keywordSearching, setKeywordSearching] = useState(false);
   const [selectedHighlightText, setSelectedHighlightText] = useState("");
+  const [clickedHighlight, setClickedHighlight] = useState(null);
+
+  const [showBoundingBoxes, setShowBoundingBoxes] = useState(true);
+  const [activeLineIndex, setActiveLineIndex] = useState(-1);
+  const [hoveredLineIndex, setHoveredLineIndex] = useState(-1);
+
+  const [editorTab, setEditorTab] = useState("text");
+  const [selectedTableId, setSelectedTableId] = useState("");
+  const [tableGrid, setTableGrid] = useState([["", ""]]);
+
+  const activeTables = pageData?.ocr?.corrected_page_json_data?.tables 
+    || pageData?.ocr?.raw_page_json_data?.tables 
+    || {};
+
+  useEffect(() => {
+    const keys = Object.keys(activeTables);
+    if (keys.length > 0) {
+      if (!keys.includes(selectedTableId)) {
+        setSelectedTableId(keys[0]);
+      }
+    } else {
+      setSelectedTableId("");
+    }
+  }, [pageData]);
+
+  useEffect(() => {
+    if (selectedTableId && activeTables[selectedTableId]) {
+      const md = activeTables[selectedTableId].markdown || "";
+      setTableGrid(parseMarkdownTable(md));
+    } else {
+      setTableGrid([]);
+    }
+  }, [selectedTableId, pageData]);
 
   useEffect(() => {
     if (!keywordQuery.trim()) {
@@ -2352,6 +2330,7 @@ function ReadingDesk({
   // Restored OCR & region states
   const [parsingEngine, setParsingEngine] = useState("ndlocr_lite");
   const [customParsingEngine, setCustomParsingEngine] = useState("");
+  const [ocrSettings, setOcrSettings] = useState<Record<string, any>>({});
   const [ocrInsertMode, setOcrInsertMode] = useState("append");
   const [region, setRegion] = useState(null);
   const [regionDrag, setRegionDrag] = useState(null);
@@ -2378,6 +2357,8 @@ function ReadingDesk({
     setRegionResult(null);
     setRegionOcrResult(null);
     setTableMessage("");
+    setActiveLineIndex(-1);
+    setHoveredLineIndex(-1);
   }, [pageData?.source?.source_id, page]);
 
   // Initialize/reset history when text changes due to page change
@@ -2534,36 +2515,117 @@ function ReadingDesk({
     };
   }, [pageWrapRef, pageData?.source?.source_id, page]);
 
+  const getHighlightRanges = (val) => {
+    const ranges = [];
+    const regex = /==([\s\S]*?)==/g;
+    let match;
+    while ((match = regex.exec(val)) !== null) {
+      ranges.push({
+        start: match.index,
+        end: match.index + match[0].length,
+        text: match[1]
+      });
+    }
+    return ranges;
+  };
+
   // Handle selected text inside the textarea
   const handleTextareaSelect = (e) => {
     const start = e.target.selectionStart;
     const end = e.target.selectionEnd;
+    const val = e.target.value;
+    const ranges = getHighlightRanges(val);
+
+    const textBeforeCursor = val.substring(0, start);
+    const linesBefore = textBeforeCursor.split("\n");
+    const lineIndex = linesBefore.length - 1;
+
+    // Calculate which ocrBlock corresponds to lineIndex in textarea
+    const lines = val.split("\n");
+    if (lineIndex >= 0 && lineIndex < lines.length && lines[lineIndex].trim() !== "") {
+      // Count how many non-empty lines are before lineIndex
+      let nonEmptyLineCount = 0;
+      for (let i = 0; i < lineIndex; i++) {
+        if (lines[i].trim() !== "") {
+          nonEmptyLineCount++;
+        }
+      }
+
+      // Find corresponding block index using the calculated mapping
+      let blockIdx = -1;
+      if (nonEmptyLineCount < blockLinesInfo.lineToBlock.length) {
+        blockIdx = blockLinesInfo.lineToBlock[nonEmptyLineCount];
+      }
+      setActiveLineIndex(blockIdx);
+    } else {
+      setActiveLineIndex(-1);
+    }
+
     if (start !== end) {
-      setSelectedHighlightText(e.target.value.substring(start, end));
+      // Validate selection: must not partially overlap any highlight range
+      const isValid = ranges.every(r => {
+        if (end <= r.start || start >= r.end) return true; // Completely outside
+        if (start <= r.start && end >= r.end) return true; // Completely encloses
+        return false; // Partial overlap
+      });
+
+      if (!isValid) {
+        setSelectedHighlightText("");
+      } else {
+        setSelectedHighlightText(val.substring(start, end));
+      }
+      setClickedHighlight(null);
     } else {
       setSelectedHighlightText("");
+      // Check if clicked inside a highlight block
+      const clicked = ranges.find(r => start >= r.start && start <= r.end);
+      if (clicked) {
+        setClickedHighlight(clicked);
+      } else {
+        setClickedHighlight(null);
+      }
     }
   };
 
-  const handleSaveSelectionAsQuote = async () => {
+  const handleHighlightSelection = () => {
     if (!selectedHighlightText.trim()) return;
-    const result = await onSaveEvidence("quote", {
-      quote: selectedHighlightText.trim(),
-      confidence: "medium",
-      note: "",
-      evidenceId: "",
-      ocr_page_json: pageData?.ocr?.raw_page_json || "",
-      corrected_ocr_page_json: pageData?.ocr?.corrected_page_json || "",
-      region_ocr_json: regionOcrResult?.region_ocr_json || regionResult?.region_ocr_json || "",
-      region: regionResult?.region || activeRegion || {},
-      region_id: regionResult?.region_id || activeRegion?.region_id || "",
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    if (start === end) return;
+
+    const ranges = getHighlightRanges(text);
+    const isValid = ranges.every(r => {
+      if (end <= r.start || start >= r.end) return true;
+      if (start <= r.start && end >= r.end) return true;
+      return false;
     });
-    if (result && result.ok !== false) {
-      alert("Quote saved successfully!");
-      setSelectedHighlightText("");
-    } else {
-      alert("Failed to save quote: " + (result?.error || "Unknown error"));
-    }
+    if (!isValid) return;
+
+    const selected = text.substring(start, end);
+    // Strip nested highlights inside the selection
+    const cleanedSelected = selected.replace(/==/g, "");
+    const highlighted = `==${cleanedSelected}==`;
+    const newText = text.substring(0, start) + highlighted + text.substring(end);
+    onTextChange(newText);
+    pushToHistoryImmediately(newText);
+    setSelectedHighlightText("");
+
+    setTimeout(() => {
+      textarea.focus();
+      const newCursorPos = start + highlighted.length;
+      textarea.setSelectionRange(newCursorPos, newCursorPos);
+    }, 50);
+  };
+
+  const handleRemoveHighlight = () => {
+    if (!clickedHighlight) return;
+    const { start, end, text: inner } = clickedHighlight;
+    const newText = text.substring(0, start) + inner + text.substring(end);
+    onTextChange(newText);
+    pushToHistoryImmediately(newText);
+    setClickedHighlight(null);
   };
 
   const handleSearchReplace = (replaceAll = false) => {
@@ -2604,25 +2666,33 @@ function ReadingDesk({
   };
 
   const getHighlightedText = () => {
-    const escapedText = text
+    let escapedText = text
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;");
-    if (!searchTerm) return escapedText;
-    try {
-      if (useRegex) {
-        const flags = "g" + (caseSensitive ? "" : "i");
-        const regex = new RegExp(`(${searchTerm})`, flags);
-        return escapedText.replace(regex, "<mark>$1</mark>");
-      } else {
-        const escapedSearch = searchTerm.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-        const flags = "g" + (caseSensitive ? "" : "i");
-        const regex = new RegExp(`(${escapedSearch})`, flags);
-        return escapedText.replace(regex, "<mark>$1</mark>");
+
+    if (searchTerm) {
+      try {
+        if (useRegex) {
+          const flags = "g" + (caseSensitive ? "" : "i");
+          const regex = new RegExp(`(${searchTerm})`, flags);
+          escapedText = escapedText.replace(regex, "<mark>$1</mark>");
+        } else {
+          const escapedSearch = searchTerm.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+          const flags = "g" + (caseSensitive ? "" : "i");
+          const regex = new RegExp(`(${escapedSearch})`, flags);
+          escapedText = escapedText.replace(regex, "<mark>$1</mark>");
+        }
+      } catch (err) {
+        // ignore search highlight issues
       }
-    } catch (err) {
-      return escapedText;
     }
+
+    // Convert markdown highlights ==text== and HTML-like highlights <mark>text</mark> to real <mark> tags in backdrop
+    escapedText = escapedText.replace(/==([\s\S]*?)==/g, "<mark>$1</mark>");
+    escapedText = escapedText.replace(/&lt;mark&gt;([\s\S]*?)&lt;\/mark&gt;/g, "<mark>$1</mark>");
+
+    return escapedText;
   };
 
   const importPdf = async (e) => {
@@ -2633,6 +2703,44 @@ function ReadingDesk({
       alert(msg);
     } catch (err) {
       alert("Failed to import PDF: " + err.message);
+    }
+  };
+
+  const handleLocalDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleLocalDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsLocalDragging(true);
+  };
+
+  const handleLocalDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsLocalDragging(false);
+  };
+
+  const handleLocalDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsLocalDragging(false);
+
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const file = e.dataTransfer.files[0];
+      const lowerName = file.name.toLowerCase();
+      if (lowerName.endsWith(".pdf") || lowerName.endsWith(".zip")) {
+        try {
+          const msg = await onImportPdf(file);
+          alert(msg);
+        } catch (err: any) {
+          alert("Failed to import file: " + err.message);
+        }
+      } else {
+        alert("Only PDF or ZIP files are supported for import.");
+      }
     }
   };
 
@@ -2649,6 +2757,9 @@ function ReadingDesk({
       if (format === "json") {
         blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
         filename = `${source.source_id}_ocr_export.json`;
+      } else if (format === "md") {
+        blob = new Blob([data.markdown_text], { type: "text/markdown;charset=utf-8" });
+        filename = `${source.source_id}_ocr_export.md`;
       } else {
         blob = new Blob([data.plain_text], { type: "text/plain;charset=utf-8" });
         filename = `${source.source_id}_ocr_export.txt`;
@@ -2681,6 +2792,167 @@ function ReadingDesk({
   };
 
   const activeRegion = regionDrag ? regionFromDrag(regionDrag.start, regionDrag.current) : region;
+
+  const ocrDataSource = useMemo(() => {
+    if (!pageData?.ocr) return null;
+    const corrData = pageData.ocr.corrected_page_json_data;
+    const rawData = pageData.ocr.raw_page_json_data;
+
+    const corrBlocks = corrData?.contents ? corrData.contents.flatMap(b => Array.isArray(b) ? b : [b]) : [];
+    const hasCorrBoxes = corrData?.imginfo?.img_width && corrBlocks.some(block => block && block.boundingBox && Array.isArray(block.boundingBox) && block.boundingBox.length >= 4);
+
+    if (hasCorrBoxes) {
+      return corrData;
+    }
+    if (rawData?.imginfo?.img_width) {
+      return rawData;
+    }
+    return null;
+  }, [pageData]);
+
+  const ocrBlocks = useMemo(() => {
+    const ocrData = ocrDataSource;
+    if (!ocrData || !ocrData.contents) return [];
+
+    const blocks = [];
+    for (const block of ocrData.contents) {
+      if (Array.isArray(block)) {
+        for (const item of block) {
+          if (item && typeof item === "object") {
+            blocks.push(item);
+          }
+        }
+      } else if (block && typeof block === "object") {
+        blocks.push(block);
+      }
+    }
+    return blocks;
+  }, [ocrDataSource]);
+
+  const hasBoundingBoxes = useMemo(() => {
+    return ocrBlocks.some(block => block.boundingBox && Array.isArray(block.boundingBox) && block.boundingBox.length >= 4);
+  }, [ocrBlocks]);
+
+  const blockLinesInfo = useMemo(() => {
+    const lineToBlock = []; // maps non-empty line index -> ocrBlock index
+    const blockToLine = []; // maps ocrBlock index -> first non-empty line index of this block
+    
+    let nonEmptyLineCount = 0;
+    for (let i = 0; i < ocrBlocks.length; i++) {
+      const block = ocrBlocks[i];
+      blockToLine[i] = nonEmptyLineCount;
+      
+      if (block && block.text && block.text.trim() !== "") {
+        const blockLines = block.text.split("\n");
+        let blockNonEmptyLines = 0;
+        for (const line of blockLines) {
+          if (line.trim() !== "") {
+            lineToBlock.push(i);
+            blockNonEmptyLines++;
+          }
+        }
+        nonEmptyLineCount += blockNonEmptyLines;
+      }
+    }
+    return { lineToBlock, blockToLine };
+  }, [ocrBlocks]);
+
+  const regionCoords = useMemo(() => {
+    const ocrData = ocrDataSource;
+    if (ocrData && ocrData.region_ocr && ocrData.region_ocr.region) {
+      return ocrData.region_ocr.region;
+    }
+    return null;
+  }, [ocrDataSource]);
+
+  const getBoundingBoxStyle = (block) => {
+    const ocrData = ocrDataSource;
+    if (!ocrData || !ocrData.imginfo) return null;
+
+    const imgWidth = ocrData.imginfo.img_width;
+    const imgHeight = ocrData.imginfo.img_height;
+    if (!imgWidth || !imgHeight) return null;
+
+    const box = block.boundingBox;
+    if (!box || !Array.isArray(box) || box.length < 4) return null;
+
+    const xs = box.map(p => p[0]);
+    const ys = box.map(p => p[1]);
+    const xMin = Math.min(...xs);
+    const xMax = Math.max(...xs);
+    const yMin = Math.min(...ys);
+    const yMax = Math.max(...ys);
+
+    let leftRel = xMin / imgWidth;
+    let topRel = yMin / imgHeight;
+    let widthRel = (xMax - xMin) / imgWidth;
+    let heightRel = (yMax - yMin) / imgHeight;
+
+    if (regionCoords) {
+      const rx = regionCoords.x || 0;
+      const ry = regionCoords.y || 0;
+      const rw = regionCoords.width || 1;
+      const rh = regionCoords.height || 1;
+
+      leftRel = rx + leftRel * rw;
+      topRel = ry + topRel * rh;
+      widthRel = widthRel * rw;
+      heightRel = heightRel * rh;
+    }
+
+    return {
+      left: `${leftRel * 100}%`,
+      top: `${topRel * 100}%`,
+      width: `${widthRel * 100}%`,
+      height: `${heightRel * 100}%`
+    };
+  };
+
+  const handleBoundingBoxClick = (idx) => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const lines = text.split("\n");
+
+    // Find the first non-empty line index of this block from the mapping
+    const targetNonEmptyLineIdx = blockLinesInfo.blockToLine[idx];
+    let textareaLineIdx = -1;
+    
+    if (targetNonEmptyLineIdx !== undefined) {
+      let nonEmptyLineCount = 0;
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].trim() !== "") {
+          if (nonEmptyLineCount === targetNonEmptyLineIdx) {
+            textareaLineIdx = i;
+            break;
+          }
+          nonEmptyLineCount++;
+        }
+      }
+    }
+
+    if (textareaLineIdx === -1) {
+      // Fallback: if we can't align via mapping, just use idx if it's within range
+      if (idx < lines.length) {
+        textareaLineIdx = idx;
+      } else {
+        return;
+      }
+    }
+
+    let startOffset = 0;
+    for (let i = 0; i < textareaLineIdx; i++) {
+      startOffset += lines[i].length + 1;
+    }
+    const endOffset = startOffset + lines[textareaLineIdx].length;
+
+    textarea.focus();
+    textarea.setSelectionRange(startOffset, endOffset);
+    setActiveLineIndex(idx);
+
+    const lineHeight = 20; 
+    textarea.scrollTop = Math.max(0, textareaLineIdx * lineHeight - 100);
+  };
 
   function regionPointFromEvent(event) {
     const frame = imageFrameRef.current;
@@ -2768,7 +3040,16 @@ function ReadingDesk({
       setRegion(result.region);
       setRegionResult(result);
       setRegionOcrResult(null);
-      setTableMessage("Selected region saved for review.");
+
+      // Trigger browser download / Save As
+      const link = document.createElement("a");
+      link.href = `${API_BASE}${result.crop_image_url}`;
+      link.download = `crop_${pageData.source.source_id}_page_${page}_${result.region_id}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      setTableMessage("Selected region exported as image download.");
     } catch (err) {
       setTableMessage(err.message);
     }
@@ -2782,6 +3063,14 @@ function ReadingDesk({
     setTableMessage("");
     try {
       const effectiveEngine = parsingEngine === "__custom__" ? customParsingEngine : parsingEngine;
+      const activeEngine = ocrEngines.find((e) => e.engine_id === effectiveEngine);
+      const engineSettings: Record<string, any> = {};
+      if (activeEngine?.options_schema) {
+        activeEngine.options_schema.forEach((opt) => {
+          const val = ocrSettings[opt.name] !== undefined ? ocrSettings[opt.name] : opt.default;
+          engineSettings[opt.name] = val;
+        });
+      }
       const result = await fetchJson(`/api/v1/reading/sources/${pageData.source.source_id}/pages/${page}/regions/ocr`, {
         method: "POST",
         body: JSON.stringify({
@@ -2793,6 +3082,7 @@ function ReadingDesk({
           parsing_engine: effectiveEngine,
           output_format: "text",
           rotation: pageRotation,
+          ...engineSettings,
         }),
       });
       setRegionOcrResult(result);
@@ -2826,11 +3116,20 @@ function ReadingDesk({
     setTableMessage("");
     try {
       const effectiveEngine = parsingEngine === "__custom__" ? customParsingEngine : parsingEngine;
+      const activeEngine = ocrEngines.find((e) => e.engine_id === effectiveEngine);
+      const engineSettings: Record<string, any> = {};
+      if (activeEngine?.options_schema) {
+        activeEngine.options_schema.forEach((opt) => {
+          const val = ocrSettings[opt.name] !== undefined ? ocrSettings[opt.name] : opt.default;
+          engineSettings[opt.name] = val;
+        });
+      }
       const result = await fetchJson(`/api/v1/reading/sources/${pageData.source.source_id}/pages/${page}/ocr`, {
         method: "POST",
         body: JSON.stringify({
           parsing_engine: effectiveEngine,
           rotation: pageRotation,
+          ...engineSettings,
         }),
       });
       setRegionOcrResult(result);
@@ -2891,11 +3190,11 @@ function ReadingDesk({
               <button
                 className="quietButton light"
                 type="button"
-                onClick={() => onRenameSource(source.source_id, source.title_original || source.title)}
-                title="Rename current source"
+                onClick={() => onRenameSource(source.source_id)}
+                title="Edit current source metadata & research notes"
                 style={{ display: "flex", alignItems: "center", gap: 4 }}
               >
-                <Edit size={14} /> Rename Source
+                <Settings size={14} /> Edit Metadata
               </button>
               <button
                 className="quietButton light"
@@ -2908,8 +3207,16 @@ function ReadingDesk({
               </button>
             </>
           )}
-          <label className="quietButton light fileImportButton">
-            <Upload size={15} /> Import PDF/ZIP
+          <label 
+            className={`fileImportDropZone ${isLocalDragging ? 'dragging' : ''}`}
+            onDragOver={handleLocalDragOver}
+            onDragEnter={handleLocalDragEnter}
+            onDragLeave={handleLocalDragLeave}
+            onDrop={handleLocalDrop}
+            title="Import or drag-and-drop a PDF/ZIP file here"
+          >
+            <Upload size={14} /> 
+            <span>{isLocalDragging ? 'Drop file here!' : 'Import PDF/ZIP'}</span>
             <input type="file" accept="application/pdf,.pdf,application/zip,.zip" onChange={importPdf} />
           </label>
           {sourceReady && pageReady && (
@@ -2921,10 +3228,10 @@ function ReadingDesk({
                   setPageImageVersion((v) => v + 1);
                   if (onReloadPage) onReloadPage();
                 }}
-                title="Reload page metadata and image"
+                title="Refresh page metadata and image"
                 style={{ display: "flex", alignItems: "center", gap: 4 }}
               >
-                <RotateCcw size={14} /> Reload Page
+                <RotateCcw size={14} /> Refresh Data
               </button>
               <a 
                 className="quietButton light pdfLink" 
@@ -3013,9 +3320,9 @@ function ReadingDesk({
             type="button"
             onClick={cropSelectedRegion}
             disabled={!sourceReady || !pageReady || !activeRegion}
-            title="Save the current active crop selection to the server"
+            title="Crop the current active selection and download it as an image file"
           >
-            Save Page Crop
+            Export Page Crop
           </button>
           <button
             className="quietButton light"
@@ -3039,6 +3346,15 @@ function ReadingDesk({
           <button
             className="quietButton light"
             type="button"
+            onClick={() => handleExportText("md")}
+            disabled={!sourceReady}
+            title="Export compiled OCR text of all pages, metadata, and research notes as Markdown (.md)"
+          >
+            Export All MD
+          </button>
+          <button
+            className="quietButton light"
+            type="button"
             onClick={() => handleExportText("json")}
             disabled={!sourceReady}
             title="Export compiled OCR text of all pages in this source as JSON"
@@ -3047,6 +3363,14 @@ function ReadingDesk({
           </button>
         </div>
       </div>
+
+      <DynamicEngineSettings
+        engineId={parsingEngine === "__custom__" ? customParsingEngine : parsingEngine}
+        engines={ocrEngines}
+        settings={ocrSettings}
+        onChange={(name, val) => setOcrSettings((prev) => ({ ...prev, [name]: val }))}
+        layout="horizontal"
+      />
 
       {tableMessage && (
         <div className={`statusBanner ${isPositiveMessage(tableMessage) ? "success" : "info"}`} style={{ marginBottom: 16, padding: "8px 12px", borderRadius: 6, fontSize: 13 }}>
@@ -3100,6 +3424,19 @@ function ReadingDesk({
                   </button>
                 </div>
 
+                {hasBoundingBoxes && (
+                  <button
+                    className="quietButton light"
+                    type="button"
+                    onClick={() => setShowBoundingBoxes(!showBoundingBoxes)}
+                    title="Toggle OCR Bounding Boxes Overlay"
+                    style={{ height: "30px", display: "inline-flex", alignItems: "center", gap: 4, marginRight: 8, padding: "0 8px", border: "1px solid #cfc7ba", borderRadius: 4, background: showBoundingBoxes ? "#eae3d5" : "transparent" }}
+                  >
+                    {showBoundingBoxes ? <Eye size={15} /> : <EyeOff size={15} />}
+                    <span>Boxes</span>
+                  </button>
+                )}
+
                 <button className="quietButton light" type="button" onClick={() => setPageRotation((current) => (current + 90) % 360)} style={{ height: "30px", display: "inline-flex", alignItems: "center" }}>
                   <RotateCw size={15} /> Rotate
                 </button>
@@ -3152,6 +3489,23 @@ function ReadingDesk({
                       onLoad={() => setPageImageError("")}
                     />
                     {activeRegion && <div className="regionOverlay" style={regionStyle(activeRegion)} />}
+                    {showBoundingBoxes && ocrBlocks.map((block, idx) => {
+                      const rectStyle = getBoundingBoxStyle(block);
+                      if (!rectStyle) return null;
+                      const isHovered = hoveredLineIndex === idx;
+                      const isActive = activeLineIndex === idx;
+                      return (
+                        <div
+                          key={`bbox-${idx}`}
+                          className={`ocrBoundingBox ${isHovered ? "hovered" : ""} ${isActive ? "active" : ""}`}
+                          style={rectStyle}
+                          onMouseEnter={() => setHoveredLineIndex(idx)}
+                          onMouseLeave={() => setHoveredLineIndex(-1)}
+                          onClick={() => handleBoundingBoxClick(idx)}
+                          title={block.text}
+                        />
+                      );
+                    })}
                   </div>
                   {pageImageError && (
                     <div className="errorBanner inline" style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -3242,6 +3596,10 @@ function ReadingDesk({
                 onClick={() => onSaveOcr({
                   ocr_page_json: rawOcrPath,
                   corrected_ocr_page_json: correctedOcrPath,
+                  tables: activeTables,
+                  region_ocr_json: regionOcrResult?.region_ocr_json || "",
+                  region_id: regionOcrResult?.region_id || "",
+                  region: regionOcrResult?.region || {},
                 })}
                 disabled={!sourceReady || !pageReady || !text.trim()}
                 style={{ minHeight: "30px", height: "30px", display: "inline-flex", alignItems: "center", gap: "6px", padding: "0 10px", fontSize: "0.82rem" }}
@@ -3251,33 +3609,209 @@ function ReadingDesk({
             </div>
           </div>
 
-          {selectedHighlightText && (
-            <button className="highlightQuoteButton" type="button" onClick={handleSaveSelectionAsQuote}>
-              <Quote size={15} /> Save selection as Quote
+          <div className="modeTabs" style={{ margin: "0 0 12px 0", borderBottom: "1px solid var(--border-color)", paddingBottom: 4 }}>
+            <button 
+              type="button" 
+              className={`tabButton ${editorTab === "text" ? "active" : ""}`} 
+              onClick={() => setEditorTab("text")}
+            >
+              Text Editor
             </button>
+            <button 
+              type="button" 
+              className={`tabButton ${editorTab === "spreadsheet" ? "active" : ""}`} 
+              onClick={() => setEditorTab("spreadsheet")}
+            >
+              Spreadsheet ({Object.keys(activeTables).length})
+            </button>
+          </div>
+
+          {editorTab === "text" ? (
+            <>
+              {selectedHighlightText && (
+                <button className="highlightQuoteButton" type="button" onClick={handleHighlightSelection}>
+                  <Highlighter size={15} /> Highlight selection
+                </button>
+              )}
+
+              {clickedHighlight && !selectedHighlightText && (
+                <button className="highlightQuoteButton" type="button" onClick={handleRemoveHighlight} style={{ background: "#904738" }}>
+                  <X size={15} /> Remove highlight
+                </button>
+              )}
+
+              <label className="deskField" style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+                <span>Editable OCR text (Highlight text to format as a highlight)</span>
+                <div className="ocrEditorContainer" style={{ flex: 1 }}>
+                  <div 
+                    ref={backdropRef}
+                    className="ocrEditorHighlightBackdrop"
+                    dangerouslySetInnerHTML={{ __html: getHighlightedText() }}
+                  />
+                  <textarea
+                    className="ocrEditor"
+                    ref={textareaRef}
+                    value={text}
+                    onChange={(e) => handleTextChange(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    onSelect={handleTextareaSelect}
+                    onKeyUp={handleTextareaSelect}
+                    onMouseUp={handleTextareaSelect}
+                    onScroll={handleTextareaScroll}
+                    spellCheck="false"
+                    style={{ minHeight: 480, flex: 1 }}
+                  />
+                </div>
+              </label>
+            </>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, flex: 1 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <label className="deskField" style={{ margin: 0, flex: 1 }}>
+                  <span>Select Table to Edit:</span>
+                  {Object.keys(activeTables).length === 0 ? (
+                    <select disabled style={{ background: "var(--bg-light)" }}><option>No tables detected on page</option></select>
+                  ) : (
+                    <select 
+                      value={selectedTableId} 
+                      onChange={(e) => setSelectedTableId(e.target.value)}
+                    >
+                      {Object.keys(activeTables).map(tid => (
+                        <option key={tid} value={tid}>{tid} (renders in markdown as [Table: {tid}])</option>
+                      ))}
+                    </select>
+                  )}
+                </label>
+                {selectedTableId && (
+                  <button 
+                    className="primaryButton"
+                    type="button"
+                    onClick={() => {
+                      const updatedTables = {
+                        ...activeTables,
+                        [selectedTableId]: {
+                          ...activeTables[selectedTableId],
+                          markdown: serializeMarkdownTable(tableGrid)
+                        }
+                      };
+                      onSaveOcr({
+                        ocr_page_json: rawOcrPath,
+                        corrected_ocr_page_json: correctedOcrPath,
+                        tables: updatedTables,
+                        region_ocr_json: regionOcrResult?.region_ocr_json || "",
+                        region_id: regionOcrResult?.region_id || "",
+                        region: regionOcrResult?.region || {},
+                      });
+                    }}
+                    style={{ minHeight: "36px", marginTop: "18px" }}
+                  >
+                    Save Table
+                  </button>
+                )}
+              </div>
+
+              {selectedTableId && tableGrid.length > 0 ? (
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button className="quietButton light" type="button" onClick={() => {
+                      const cols = tableGrid[0]?.length || 2;
+                      setTableGrid([...tableGrid, Array(cols).fill("")]);
+                    }}>+ Add Row</button>
+                    <button className="quietButton light" type="button" onClick={() => {
+                      if (tableGrid.length <= 1) return;
+                      setTableGrid(tableGrid.slice(0, -1));
+                    }}>- Delete Row</button>
+                    <button className="quietButton light" type="button" onClick={() => {
+                      setTableGrid(tableGrid.map(row => [...row, ""]));
+                    }}>+ Add Column</button>
+                    <button className="quietButton light" type="button" onClick={() => {
+                      if (tableGrid[0].length <= 1) return;
+                      setTableGrid(tableGrid.map(row => row.slice(0, -1)));
+                    }}>- Delete Column</button>
+                  </div>
+
+                  <div style={{ overflowX: "auto", border: "1px solid var(--border-color)", borderRadius: 6, background: "var(--bg-surface-elevated)" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 400 }}>
+                      <thead>
+                        <tr style={{ background: "var(--bg-light)", borderBottom: "2px solid var(--border-color)" }}>
+                          {tableGrid[0].map((cell, cIdx) => (
+                            <th key={cIdx} style={{ padding: 6, borderRight: "1px solid var(--border-color)" }}>
+                              <input 
+                                type="text" 
+                                value={cell} 
+                                onChange={(e) => {
+                                  const newGrid = [...tableGrid];
+                                  newGrid[0][cIdx] = e.target.value;
+                                  setTableGrid(newGrid);
+                                }}
+                                style={{ width: "100%", border: "none", background: "transparent", fontWeight: "bold", textAlign: "center", outline: "none" }}
+                                placeholder={`Col ${cIdx + 1}`}
+                              />
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {tableGrid.slice(1).map((row, rIdx) => (
+                          <tr key={rIdx} style={{ borderBottom: "1px solid var(--border-color)" }}>
+                            {row.map((cell, cIdx) => (
+                              <td key={cIdx} style={{ padding: 4, borderRight: "1px solid var(--border-color)" }}>
+                                <input 
+                                  type="text" 
+                                  value={cell} 
+                                  onChange={(e) => {
+                                    const newGrid = [...tableGrid];
+                                    newGrid[rIdx + 1][cIdx] = e.target.value;
+                                    setTableGrid(newGrid);
+                                  }}
+                                  style={{ width: "100%", border: "none", background: "transparent", outline: "none" }}
+                                />
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <div className="emptyState" style={{ padding: "40px 20px" }}>
+                  No table selected or no tables found. Use the text editor to manage layouts.
+                </div>
+              )}
+            </div>
           )}
 
-          <label className="deskField" style={{ flex: 1 }}>
-            <span>Editable OCR text (Highlight text to save a quote)</span>
-            <div className="ocrEditorContainer">
-              <div 
-                ref={backdropRef}
-                className="ocrEditorHighlightBackdrop"
-                dangerouslySetInnerHTML={{ __html: getHighlightedText() }}
-              />
+          {sourceReady && pageReady && (
+            <label className="deskField" style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span>Page Research Note (included in exports)</span>
+                <button
+                  className="primaryButton"
+                  type="button"
+                  onClick={() => onSavePageNote(source.source_id, page, pageNoteText)}
+                  style={{ minHeight: "24px", height: "24px", padding: "0 8px", fontSize: "0.75rem", borderRadius: 4 }}
+                >
+                  Save Page Note
+                </button>
+              </div>
               <textarea
-                className="ocrEditor"
-                ref={textareaRef}
-                value={text}
-                onChange={(e) => handleTextChange(e.target.value)}
-                onKeyDown={handleKeyDown}
-                onSelect={handleTextareaSelect}
-                onScroll={handleTextareaScroll}
-                spellCheck="false"
-                style={{ minHeight: 480 }}
+                value={pageNoteText}
+                onChange={(e) => onPageNoteTextChange(e.target.value)}
+                placeholder="Enter context, translations, or annotations for this page..."
+                style={{
+                  minHeight: 100,
+                  fontSize: "0.85rem",
+                  padding: 8,
+                  borderRadius: 6,
+                  border: "1px solid var(--border-color)",
+                  background: "var(--bg-surface-elevated, #fff)",
+                  color: "var(--text-primary)",
+                  resize: "vertical"
+                }}
               />
-            </div>
-          </label>
+            </label>
+          )}
 
         </div>
       </div>
@@ -3325,32 +3859,7 @@ function isPositiveMessage(message) {
   return /saved|imported|selected|completed|review|generated|created|rendered|promoted/i.test(message || "");
 }
 
-function SummaryBlock({ summary, loading }) {
-  const counts = summary?.counts;
-  return (
-    <div className="summaryBlock">
-      {loading || !counts ? (
-        <span className="mutedOnDark">Loading evidence...</span>
-      ) : (
-        <>
-          <Metric label="Entities" value={counts.entities} />
-          <Metric label="Relations" value={counts.relationships} />
-          <Metric label="Attitudes" value={counts.attitudes} />
-          <Metric label="Quotes" value={counts.evidence_quotes} />
-        </>
-      )}
-    </div>
-  );
-}
 
-function Metric({ label, value }) {
-  return (
-    <div className="metric">
-      <strong>{value}</strong>
-      <span>{label}</span>
-    </div>
-  );
-}
 
 function TabButton({ active, icon, onClick, children }) {
   return (
@@ -3370,1636 +3879,38 @@ function PanelTitle({ icon, title }) {
   );
 }
 
-function isGeneratedOfficerRecord(record) {
-  return String(record?.entity_id || "").startsWith("officer_ent_")
-    || String(record?.relationship_id || "").startsWith("officer_rel_")
-    || String(record?.evidence_id || "").startsWith("officer_ev_");
-}
-
-function EntityTable({ entities, onOpenEntity, onEdit, onDelete }) {
-  return (
-    <div className="dataTableWrap">
-      <table className="dataTable">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Type</th>
-            <th>Aliases</th>
-            <th>Sources</th>
-            <th>Mentions</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {entities.map((entity) => {
-            const readOnly = isGeneratedOfficerRecord(entity);
-            return (
-              <tr key={entity.entity_id} onClick={() => onOpenEntity(entity.entity_id)}>
-                <td>
-                  <strong>{entity.canonical_name}</strong>
-                  <small>{entity.entity_id}</small>
-                </td>
-                <td>{entity.entity_type}</td>
-                <td>{entity.aliases?.join(", ")}</td>
-                <td>{entity.source_ids?.join(", ")}</td>
-                <td>{entity.mention_count}</td>
-                <td>
-                  {readOnly ? (
-                    <span className="readonlyPill">Generated</span>
-                  ) : (
-                    <div style={{ display: "flex", gap: "6px" }} onClick={(e) => e.stopPropagation()}>
-                      <button className="editButtonSpreadsheet" onClick={() => onEdit(entity)}>Edit</button>
-                      <button className="deleteButtonSpreadsheet" onClick={() => onDelete(entity)}>Delete</button>
-                    </div>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      {entities.length === 0 && <p className="muted">No matching entities.</p>}
-    </div>
-  );
-}
-
-function RelationshipTable({ claims, onOpenEvidence, onEdit, onDelete, onJumpToReadingDesk }) {
-  return (
-    <div className="dataTableWrap">
-      <table className="dataTable">
-        <thead>
-          <tr>
-            <th>Subject</th>
-            <th>Relation</th>
-            <th>Object</th>
-            <th>Source</th>
-            <th>Page</th>
-            <th>Confidence</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {claims.map((claim) => {
-            const readOnly = isGeneratedOfficerRecord(claim);
-            return (
-              <tr key={claim.relationship_id} onClick={() => onOpenEvidence(claim.evidence_id)}>
-                <td>{claim.subject_name}</td>
-                <td>{claim.relation_type}</td>
-                <td>{claim.object_name}</td>
-                <td>{claim.source_id}</td>
-                <td>{claim.page}</td>
-                <td>{claim.confidence}</td>
-                <td>
-                  <div style={{ display: "flex", gap: "6px" }} onClick={(e) => e.stopPropagation()}>
-                    {onJumpToReadingDesk && (
-                      <button className="editButtonSpreadsheet" onClick={() => onJumpToReadingDesk(claim.source_id, claim.page, claim.quote)}>Locate</button>
-                    )}
-                    {readOnly ? (
-                      <span className="readonlyPill">Generated</span>
-                    ) : (
-                      <>
-                        <button className="editButtonSpreadsheet" onClick={() => onEdit(claim)}>Edit</button>
-                        <button className="deleteButtonSpreadsheet" onClick={() => onDelete(claim)}>Delete</button>
-                      </>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      {claims.length === 0 && <p className="muted">No matching relationship claims.</p>}
-    </div>
-  );
-}
-
-function AttitudeTable({ claims, onOpenEvidence, onEdit, onDelete, onJumpToReadingDesk }) {
-  return (
-    <div className="dataTableWrap">
-      <table className="dataTable">
-        <thead>
-          <tr>
-            <th>Speaker</th>
-            <th>Attitude</th>
-            <th>Polarity</th>
-            <th>Target</th>
-            <th>Source</th>
-            <th>Page</th>
-            <th>Confidence</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {claims.map((claim) => (
-            <tr key={claim.attitude_id} onClick={() => onOpenEvidence(claim.evidence_id)}>
-              <td>{claim.speaker_name}</td>
-              <td>{claim.attitude_type}</td>
-              <td>
-                <span className={`polarity ${claim.polarity}`}>{claim.polarity}</span>
-              </td>
-              <td>{claim.target_name}</td>
-              <td>{claim.source_id}</td>
-              <td>{claim.page}</td>
-              <td>{claim.confidence}</td>
-              <td>
-                <div style={{ display: "flex", gap: "6px" }} onClick={(e) => e.stopPropagation()}>
-                  {onJumpToReadingDesk && (
-                    <button className="editButtonSpreadsheet" onClick={() => onJumpToReadingDesk(claim.source_id, claim.page, claim.quote)}>Locate</button>
-                  )}
-                  <button className="editButtonSpreadsheet" onClick={() => onEdit(claim)}>Edit</button>
-                  <button className="deleteButtonSpreadsheet" onClick={() => onDelete(claim)}>Delete</button>
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {claims.length === 0 && <p className="muted">No matching attitude claims.</p>}
-    </div>
-  );
-}
-
-function EntityDetail({ detail, onOpenEvidence, onJumpToReadingDesk }) {
-  if (!detail) {
-    return (
-      <section className="panel detailPanel">
-        <PanelTitle icon={<Database size={18} />} title="Entity Detail" />
-        <p className="muted">Select an entity to inspect mentions, relationships, attitudes, and evidence links.</p>
-      </section>
-    );
-  }
-  return (
-    <section className="panel detailPanel">
-      <PanelTitle icon={<Database size={18} />} title="Entity Detail" />
-      <h1>{detail.entity.canonical_name}</h1>
-      <p className="originalTitle">{detail.entity.entity_type}</p>
-      <div className="tags">
-        {detail.entity.aliases?.map((alias) => (
-          <span key={alias}>{alias}</span>
-        ))}
-      </div>
-      <h2>Mentions</h2>
-      <div className="stack">
-        {detail.mentions.map((mention) => (
-          <div key={mention.mention_id} style={{ display: "flex", gap: 6, alignItems: "stretch" }}>
-            <button className="rowButton" style={{ flex: 1 }} onClick={() => onOpenEvidence(mention.evidence_id)}>
-              <strong>"{mention.name_as_appears}"</strong>
-              {mention.quote && (
-                <blockquote style={{ fontSize: "0.82rem", margin: "6px 0", borderLeft: "2px solid #cfc7ba", paddingLeft: "8px", color: "var(--text-secondary)", textAlign: "left" }}>
-                  {mention.quote}
-                </blockquote>
-              )}
-              <span>
-                {mention.source_id}, page {mention.page}
-              </span>
-            </button>
-            {onJumpToReadingDesk && (
-              <button 
-                title="Locate Quote in Reading Desk"
-                onClick={() => onJumpToReadingDesk(mention.source_id, mention.page, mention.quote)}
-                style={{
-                  width: 36,
-                  border: "1px solid var(--border-color)",
-                  borderRadius: 6,
-                  background: "var(--bg-surface-elevated)",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "var(--color-primary, #284f54)"
-                }}
-              >
-                <BookOpen size={15} />
-              </button>
-            )}
-          </div>
-        ))}
-      </div>
-      <h2>Relationships</h2>
-      <div className="stack compact">
-        {detail.relationships.map((claim) => (
-          <div key={claim.relationship_id} style={{ display: "flex", gap: 6, alignItems: "stretch" }}>
-            <button className="rowButton" style={{ flex: 1 }} onClick={() => onOpenEvidence(claim.evidence_id)}>
-              <strong>{claim.relation_type}</strong>
-              <span>
-                {claim.source_id}, page {claim.page}
-              </span>
-            </button>
-            {onJumpToReadingDesk && (
-              <button 
-                title="Locate Quote in Reading Desk"
-                onClick={() => onJumpToReadingDesk(claim.source_id, claim.page, claim.quote)}
-                style={{
-                  width: 36,
-                  border: "1px solid var(--border-color)",
-                  borderRadius: 6,
-                  background: "var(--bg-surface-elevated)",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "var(--color-primary, #284f54)"
-                }}
-              >
-                <BookOpen size={15} />
-              </button>
-            )}
-          </div>
-        ))}
-      </div>
-      <h2>Attitudes</h2>
-      <div className="stack compact">
-        {detail.attitudes.map((claim) => (
-          <div key={claim.attitude_id} style={{ display: "flex", gap: 6, alignItems: "stretch" }}>
-            <button className="rowButton" style={{ flex: 1 }} onClick={() => onOpenEvidence(claim.evidence_id)}>
-              <strong>
-                {claim.attitude_type} - {claim.polarity}
-              </strong>
-              <span>
-                {claim.source_id}, page {claim.page}
-              </span>
-            </button>
-            {onJumpToReadingDesk && (
-              <button 
-                title="Locate Quote in Reading Desk"
-                onClick={() => onJumpToReadingDesk(claim.source_id, claim.page, claim.quote)}
-                style={{
-                  width: 36,
-                  border: "1px solid var(--border-color)",
-                  borderRadius: 6,
-                  background: "var(--bg-surface-elevated)",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "var(--color-primary, #284f54)"
-                }}
-              >
-                <BookOpen size={15} />
-              </button>
-            )}
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function EvidenceDrawer({ evidence, onClose, onJumpToReadingDesk }) {
-  return (
-    <aside className="evidenceDrawer" aria-label="Evidence detail">
-      <div className="drawerHeader">
-        <div>
-          <span className="eyebrow">Evidence</span>
-          <h2>{evidence.evidence_id}</h2>
-        </div>
-        <button className="iconButton" onClick={onClose} aria-label="Close evidence drawer">
-          <X size={18} />
-        </button>
-      </div>
-      <blockquote>{evidence.quote}</blockquote>
-      {onJumpToReadingDesk && (
-        <button 
-          className="primaryButton" 
-          onClick={() => onJumpToReadingDesk(evidence.source_id, evidence.page, evidence.quote)}
-          style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginBottom: 16 }}
-        >
-          <BookOpen size={16} />
-          Locate in Reading Desk
-        </button>
-      )}
-      <dl className="drawerMeta">
-        <div>
-          <dt>Source</dt>
-          <dd>{evidence.source_id}</dd>
-        </div>
-        <div>
-          <dt>Page</dt>
-          <dd>{evidence.page}</dd>
-        </div>
-        <div>
-          <dt>Status</dt>
-          <dd>{evidence.extraction_status}</dd>
-        </div>
-        <div>
-          <dt>OCR JSON</dt>
-          <dd>{evidence.ocr_page_json}</dd>
-        </div>
-        <div>
-          <dt>Local PDF</dt>
-          <dd>{evidence.source_pdf}</dd>
-        </div>
-        <div>
-          <dt>Note</dt>
-          <dd>{evidence.note || "-"}</dd>
-        </div>
-      </dl>
-    </aside>
-  );
-}
-
-function selectedTextOrFallback(text) {
-  const selected = window.getSelection?.().toString().trim();
-  if (selected) return selected;
-  return text.split("\n").find((line) => line.trim()) || text.slice(0, 240);
-}
-
-function uniqueValues(values) {
-  return [...new Set((values || []).filter(Boolean))];
-}
-
-function matchesQuery(value, query) {
-  if (!query.trim()) return true;
-  return JSON.stringify(value).toLowerCase().includes(query.trim().toLowerCase());
-}
-
-
-function EvidenceDesk({
-  sources,
-  initialSourceId,
-  onSourceChange,
-  allEntities,
-  onRefresh,
-  onSaveEvidence,
-  entityTypes,
-  setEntityTypes,
-  relationTypes,
-  setRelationTypes,
-  onJumpToReadingDesk,
-  onMergeTrigger,
-}) {
-  const [selectedSourceId, setSelectedSourceId] = useState(initialSourceId || "");
-  const [artifact, setArtifact] = useState(null);
-  const [activeQuote, setActiveQuote] = useState(null);
-  const [selectedText, setSelectedText] = useState("");
-  const [graphMessage, setGraphMessage] = useState("");
-
-  const handleLocateQuote = (quote) => {
-    setActiveQuote(quote);
-    setSelectedText("");
-    setSelectedNodeEntity(null);
-    setSelectedEdgeRelation(null);
-    setTimeout(() => {
-      document.getElementById(`quote_card_${quote.evidence_id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }, 100);
-  };
+function parseMarkdownTable(md) {
+  if (!md || !md.trim()) return [["", ""]];
+  const lines = md.trim().split("\n").map(l => l.trim()).filter(Boolean);
   
-  // Entity Approval States
-  const [entityModalOpen, setEntityModalOpen] = useState(false);
-  const [entityModalMode, setEntityModalMode] = useState("create"); // 'create' or 'link'
-  const [newEntity, setNewEntity] = useState({ canonical_name: "", name_original: "", entity_type: "person", aliasesString: "", notes: "" });
-  const [linkToEntityId, setLinkToEntityId] = useState("");
-  const [selectedEvidenceId, setSelectedEvidenceId] = useState("");
+  const parsed = lines.map(line => {
+    let parts = line.split("|");
+    if (parts.length > 1 && parts[0] === "") parts.shift();
+    if (parts.length > 0 && parts[parts.length - 1] === "") parts.pop();
+    return parts.map(cell => cell.trim());
+  });
 
-  // Graph state (Node coordinates map)
-  const [positions, setPositions] = useState({});
-  const [draggedNodeId, setDraggedNodeId] = useState(null);
-  const [drawingEdgeFromId, setDrawingEdgeFromId] = useState(null);
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const grid = parsed.filter(row => {
+    const isSeparator = row.every(cell => /^:?-+:?$/.test(cell));
+    return !isSeparator;
+  });
 
-  // Relationship Modal States
-  const [relModalOpen, setRelModalOpen] = useState(false);
-  const [newRel, setNewRel] = useState({ subject_id: "", object_id: "", relation_type: "spouse", note: "", confidence: "medium", evidence_id: "" });
+  if (grid.length === 0) return [["", ""]];
+  return grid;
+}
 
-  // Node editing state
-  const [selectedNodeEntity, setSelectedNodeEntity] = useState(null);
-  const [selectedEdgeRelation, setSelectedEdgeRelation] = useState(null);
-
-  useEffect(() => {
-    if (selectedSourceId) {
-      loadArtifact(selectedSourceId);
-    } else {
-      setArtifact(null);
-      setActiveQuote(null);
-    }
-  }, [selectedSourceId]);
-
-  async function loadArtifact(sourceId) {
-    setGraphMessage("");
-    try {
-      const art = await fetchJson(`/api/v1/evidence/source-graph/${sourceId}`);
-      const hasGeneratedOfficerRows = (art.relationship_claims || []).some((claim) => String(claim.relationship_id || "").startsWith("officer_rel_"))
-        || (art.evidence_quotes || []).some((quote) => String(quote.evidence_id || "").startsWith("officer_ev_"));
-      if (!hasGeneratedOfficerRows) {
-        try {
-          const editableArt = await fetchJson(`/api/v1/extraction-artifacts/${sourceId}`);
-          if (editableArt.extraction_schema_version === "evidence-graph-v1") {
-            setArtifact({ ...editableArt, read_only: false, data_source: "editable_json" });
-            setActiveQuote(null);
-            initializeGraphPositions(editableArt.entity_records || []);
-            return;
-          }
-        } catch {
-          // Keep the generated SQLite graph below.
-        }
-      }
-      setArtifact(art);
-      setActiveQuote(null);
-      initializeGraphPositions(art.entity_records || []);
-      if ((art.entity_records || []).length === 0 && (art.relationship_claims || []).length === 0 && (art.evidence_quotes || []).length === 0) {
-        setGraphMessage("No queryable evidence graph rows found for this source. Rebuild SQLite or check review status.");
-      }
-    } catch (err) {
-      try {
-        const art = await fetchJson(`/api/v1/extraction-artifacts/${sourceId}`);
-        setArtifact({ ...art, read_only: false, data_source: "editable_json" });
-        setActiveQuote(null);
-        initializeGraphPositions(art.entity_records || []);
-        setGraphMessage("Loaded editable JSON artifact because the generated SQLite graph was unavailable.");
-      } catch {
-        setArtifact(null);
-        setActiveQuote(null);
-        setPositions({});
-        setGraphMessage(`Unable to load graph for this source: ${err.message}`);
-      }
-    }
+function serializeMarkdownTable(grid) {
+  if (grid.length === 0) return "";
+  const lines = [];
+  
+  lines.push("| " + grid[0].map(c => c || " ").join(" | ") + " |");
+  lines.push("| " + grid[0].map(() => "---").join(" | ") + " |");
+  
+  for (let r = 1; r < grid.length; r++) {
+    lines.push("| " + grid[r].map(c => c || " ").join(" | ") + " |");
   }
-
-  function initializeGraphPositions(entities) {
-    const newPos = {};
-    entities.forEach((entity, idx) => {
-      const angle = (idx / (entities.length || 1)) * 2 * Math.PI;
-      newPos[entity.entity_id] = {
-        x: 250 + 150 * Math.cos(angle),
-        y: 200 + 120 * Math.sin(angle),
-      };
-    });
-    setPositions(newPos);
-  }
-
-  const handleDeleteQuote = async (evidenceId) => {
-    if (artifact?.read_only) {
-      alert("This graph is generated from SQLite/reviewed artifacts. Edit the source artifact or table review data, then rebuild the database.");
-      return;
-    }
-    const confirm = window.confirm("Are you sure you want to delete this quote? Any entity mentions, relationships, or claims linked to this quote will also be deleted.");
-    if (!confirm) return;
-    try {
-      const matchingQuote = quotes.find(q => q.evidence_id === evidenceId);
-      const targetSourceId = selectedSourceId === "project"
-        ? (matchingQuote?.source_id || sources[0]?.source_id)
-        : selectedSourceId;
-
-      await fetchJson(`/api/v1/evidence/quotes?evidence_id=${evidenceId}&source_id=${targetSourceId}`, {
-        method: "DELETE"
-      });
-      if (activeQuote?.evidence_id === evidenceId) {
-        setActiveQuote(null);
-        setSelectedText("");
-      }
-      await loadArtifact(selectedSourceId);
-      await onRefresh();
-    } catch (err) {
-      alert("Failed to delete quote: " + err.message);
-    }
-  };
-
-  // Handle highlighted text inside the quote text display
-  const handleQuoteTextSelect = (e) => {
-    const selected = window.getSelection().toString().trim();
-    if (selected) {
-      setSelectedText(selected);
-    }
-  };
-
-  const handleRecognizeAsEntity = () => {
-    if (artifact?.read_only) return;
-    if (!selectedText.trim()) return;
-    setNewEntity({
-      canonical_name: selectedText,
-      name_original: selectedText,
-      entity_type: "person",
-      aliasesString: "",
-      notes: ""
-    });
-    setLinkToEntityId("");
-    setSelectedEvidenceId(activeQuote?.evidence_id || "");
-    setEntityModalMode("create");
-    setEntityModalOpen(true);
-  };
-
-  const handleSaveEntityApproval = async () => {
-    try {
-      let entityId = "";
-      const matchingQuote = selectedEvidenceId ? quotes.find(q => q.evidence_id === selectedEvidenceId) : null;
-      const targetSourceId = selectedSourceId === "project"
-        ? (matchingQuote?.source_id || sources[0]?.source_id)
-        : selectedSourceId;
-
-      if (entityModalMode === "create") {
-        entityId = `ent_${Date.now()}`;
-        // Add entity to current artifact
-        await fetchJson("/api/v1/evidence/entities", {
-          method: "PUT",
-          body: JSON.stringify({
-            source_id: targetSourceId,
-            entity_id: entityId,
-            canonical_name: newEntity.canonical_name,
-            name_original: newEntity.name_original,
-            entity_type: newEntity.entity_type,
-            aliases: newEntity.aliasesString.split(",").map(a => a.trim()).filter(Boolean),
-            notes: newEntity.notes
-          })
-        });
-      } else {
-        entityId = linkToEntityId;
-        if (!entityId) return;
-      }
-
-      // Add Mention (Entity Mention) linking entity to selectedEvidenceId
-      if (selectedEvidenceId && matchingQuote) {
-        const mentionName = selectedText || newEntity.canonical_name || "Mention";
-        await fetchJson("/api/v1/evidence/mentions", {
-          method: "PUT",
-          body: JSON.stringify({
-            source_id: targetSourceId,
-            entity_id: entityId,
-            page: matchingQuote.page,
-            name_as_appears: mentionName,
-            evidence_id: matchingQuote.evidence_id,
-            confidence: "medium",
-            note: `Mention of ${mentionName} recognized from quote.`
-          })
-        });
-      }
-
-      setEntityModalOpen(false);
-      setSelectedText("");
-      await loadArtifact(selectedSourceId);
-      await onRefresh();
-    } catch (err) {
-      alert("Failed to approve entity: " + err.message);
-    }
-  };
-
-  // Dragging nodes handlers
-  const handleNodeMouseDown = (e, entityId) => {
-    e.stopPropagation();
-    if (artifact?.read_only) return;
-    if (e.shiftKey) {
-      // Draw edge start
-      setDrawingEdgeFromId(entityId);
-      const rect = e.currentTarget.ownerSVGElement.getBoundingClientRect();
-      setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-    } else {
-      setDraggedNodeId(entityId);
-    }
-  };
-
-  const handleCanvasMouseMove = (e) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    
-    if (draggedNodeId && positions[draggedNodeId]) {
-      setPositions({
-        ...positions,
-        [draggedNodeId]: { x, y }
-      });
-    } else if (drawingEdgeFromId) {
-      setMousePos({ x, y });
-    }
-  };
-
-  const handleCanvasMouseUp = () => {
-    setDraggedNodeId(null);
-    setDrawingEdgeFromId(null);
-  };
-
-  const handleNodeMouseUp = (e, entityId) => {
-    if (artifact?.read_only) return;
-    if (drawingEdgeFromId && drawingEdgeFromId !== entityId) {
-      // Connect nodes! Open Relationship Modal
-      setNewRel({
-        subject_id: drawingEdgeFromId,
-        object_id: entityId,
-        relation_type: "spouse",
-        note: "",
-        confidence: "medium",
-        evidence_id: activeQuote?.evidence_id || (quotes[0]?.evidence_id || "")
-      });
-      setRelModalOpen(true);
-    }
-    setDrawingEdgeFromId(null);
-  };
-
-  const handleSaveRelationship = async () => {
-    if (artifact?.read_only) {
-      alert("This graph is generated from SQLite/reviewed artifacts. Edit the source artifact or table review data, then rebuild the database.");
-      return;
-    }
-    if (!newRel.evidence_id) {
-      alert("Please select an evidence quote for this relationship.");
-      return;
-    }
-    const matchingQuote = quotes.find(q => q.evidence_id === newRel.evidence_id);
-    if (!matchingQuote) {
-      alert("Selected evidence quote not found.");
-      return;
-    }
-
-    try {
-      const subjectNode = nodes.find(n => n.entity_id === newRel.subject_id);
-      const objectNode = nodes.find(n => n.entity_id === newRel.object_id);
-      const targetSourceId = selectedSourceId === "project"
-        ? (matchingQuote?.source_id || sources[0]?.source_id)
-        : selectedSourceId;
-
-      await fetchJson("/api/v1/evidence/relationships", {
-        method: "PUT",
-        body: JSON.stringify({
-          source_id: targetSourceId,
-          relation_type: newRel.relation_type,
-          page: matchingQuote.page,
-          evidence_id: matchingQuote.evidence_id,
-          quote: matchingQuote.quote,
-          confidence: newRel.confidence,
-          note: newRel.note,
-          subject: {
-            entity_id: newRel.subject_id,
-            name: subjectNode?.canonical_name || "",
-            entity_type: subjectNode?.entity_type || "person"
-          },
-          object: {
-            entity_id: newRel.object_id,
-            name: objectNode?.canonical_name || "",
-            entity_type: objectNode?.entity_type || "person"
-          }
-        })
-      });
-      setRelModalOpen(false);
-      await loadArtifact(selectedSourceId);
-      await onRefresh();
-    } catch (err) {
-      alert("Failed to create relationship: " + err.message);
-    }
-  };
-
-  const handleUpdateNodeEntity = async () => {
-    if (artifact?.read_only) {
-      alert("This graph is generated from SQLite/reviewed artifacts. Edit the source artifact or table review data, then rebuild the database.");
-      return;
-    }
-    if (!selectedNodeEntity) return;
-    try {
-      const matchingMention = artifact?.entity_mentions?.find(m => m.entity_id === selectedNodeEntity.entity_id);
-      const targetSourceId = selectedSourceId === "project"
-        ? (matchingMention?.source_id || selectedNodeEntity.source_id || sources[0]?.source_id)
-        : selectedSourceId;
-
-      await fetchJson("/api/v1/evidence/entities", {
-        method: "PUT",
-        body: JSON.stringify({
-          source_id: targetSourceId,
-          ...selectedNodeEntity
-        })
-      });
-      setSelectedNodeEntity(null);
-      await loadArtifact(selectedSourceId);
-      await onRefresh();
-    } catch (err) {
-      alert("Failed to update entity: " + err.message);
-    }
-  };
-
-  const handleDeleteNodeEntity = async () => {
-    if (artifact?.read_only) {
-      alert("This graph is generated from SQLite/reviewed artifacts. Edit the source artifact or table review data, then rebuild the database.");
-      return;
-    }
-    if (!selectedNodeEntity) return;
-    const confirm = window.confirm("Delete this entity? Mentions and relationships using it will also be deleted.");
-    if (!confirm) return;
-    try {
-      const targetSourceId = selectedSourceId === "project" ? "" : selectedSourceId;
-      const query = targetSourceId ? `&source_id=${targetSourceId}` : "";
-      await fetchJson(`/api/v1/evidence/entities?entity_id=${selectedNodeEntity.entity_id}${query}`, {
-        method: "DELETE"
-      });
-      setSelectedNodeEntity(null);
-      await loadArtifact(selectedSourceId);
-      await onRefresh();
-    } catch (err) {
-      alert("Failed to delete entity: " + err.message);
-    }
-  };
-
-  const handleUpdateEdgeRelation = async () => {
-    if (artifact?.read_only) {
-      alert("This graph is generated from SQLite/reviewed artifacts. Edit the source artifact or table review data, then rebuild the database.");
-      return;
-    }
-    if (!selectedEdgeRelation) return;
-    try {
-      const subjectNode = nodes.find(n => n.entity_id === selectedEdgeRelation.subject_entity_id);
-      const objectNode = nodes.find(n => n.entity_id === selectedEdgeRelation.object_entity_id);
-      const targetSourceId = selectedSourceId === "project"
-        ? (selectedEdgeRelation.source_id || sources[0]?.source_id)
-        : selectedSourceId;
-
-      await fetchJson("/api/v1/evidence/relationships", {
-        method: "PUT",
-        body: JSON.stringify({
-          source_id: targetSourceId,
-          relationship_id: selectedEdgeRelation.relationship_id,
-          relation_type: selectedEdgeRelation.relation_type,
-          page: selectedEdgeRelation.page,
-          evidence_id: selectedEdgeRelation.evidence_id,
-          quote: selectedEdgeRelation.quote,
-          confidence: selectedEdgeRelation.confidence,
-          note: selectedEdgeRelation.note,
-          subject: {
-            entity_id: selectedEdgeRelation.subject_entity_id,
-            name: subjectNode?.canonical_name || "",
-            entity_type: subjectNode?.entity_type || "person"
-          },
-          object: {
-            entity_id: selectedEdgeRelation.object_entity_id,
-            name: objectNode?.canonical_name || "",
-            entity_type: objectNode?.entity_type || "person"
-          }
-        })
-      });
-      setSelectedEdgeRelation(null);
-      await loadArtifact(selectedSourceId);
-      await onRefresh();
-    } catch (err) {
-      alert("Failed to update relationship: " + err.message);
-    }
-  };
-
-  const handleDeleteEdgeRelation = async () => {
-    if (artifact?.read_only) {
-      alert("This graph is generated from SQLite/reviewed artifacts. Edit the source artifact or table review data, then rebuild the database.");
-      return;
-    }
-    if (!selectedEdgeRelation) return;
-    const confirmDelete = window.confirm("Are you sure you want to delete this relationship?");
-    if (!confirmDelete) return;
-
-    try {
-      const targetSourceId = selectedSourceId === "project"
-        ? (selectedEdgeRelation.source_id || sources[0]?.source_id)
-        : selectedSourceId;
-
-      await fetchJson(`/api/v1/evidence/relationships?relationship_id=${selectedEdgeRelation.relationship_id}&source_id=${targetSourceId}`, {
-        method: "DELETE"
-      });
-      setSelectedEdgeRelation(null);
-      await loadArtifact(selectedSourceId);
-      await onRefresh();
-    } catch (err) {
-      alert("Failed to delete relationship: " + err.message);
-    }
-  };
-
-  const nodes = artifact?.entity_records || [];
-  const edges = artifact?.relationship_claims || [];
-  const quotes = artifact?.evidence_quotes || [];
-  const graphReadOnly = Boolean(artifact?.read_only);
-  const selectedSource = sources.find(s => s.source_id === selectedSourceId);
-  const sourceTitle = selectedSource?.title_original || selectedSource?.title || selectedSourceId;
-
-  return (
-    <div className="evidenceDeskLayout">
-      <div className="quotesListPanel">
-        <label className="deskField">
-          <span>Active Source</span>
-          <select value={selectedSourceId} onChange={(e) => {
-            setSelectedSourceId(e.target.value);
-            onSourceChange(e.target.value);
-          }}>
-            <option value="">Choose a source</option>
-            <option value="project">Project View (All Sources)</option>
-            {sources.map((s) => (
-              <option key={s.source_id} value={s.source_id}>
-                {s.title_original || s.title} ({s.source_id})
-              </option>
-            ))}
-          </select>
-        </label>
-        {selectedSourceId && (
-          <>
-            {graphReadOnly && (
-              <div className="warningBanner" style={{ marginBottom: 12 }}>
-                Generated from SQLite/reviewed artifacts. Edit the source artifact or table review data, then rebuild the database.
-              </div>
-            )}
-            {graphMessage && (
-              <div className="emptyState" style={{ marginBottom: 12 }}>
-                {graphMessage}
-              </div>
-            )}
-            {activeQuote && (
-              <div className="quoteViewerContainer" style={{ marginBottom: 16 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                  <h4 style={{ margin: 0 }}>Quote Viewer (Highlight text to extract entity)</h4>
-                  {!graphReadOnly && (
-                    <button 
-                      className="quietButton light dangerButton" 
-                      onClick={() => handleDeleteQuote(activeQuote.evidence_id)}
-                      style={{ padding: "4px 8px", fontSize: "0.8rem", height: "auto" }}
-                    >
-                      Delete Quote
-                    </button>
-                  )}
-                </div>
-                <div className="quoteTextDisplay" onMouseUp={handleQuoteTextSelect}>
-                  {activeQuote.quote}
-                </div>
-                {selectedText && !graphReadOnly && (
-                  <button className="primaryButton" onClick={handleRecognizeAsEntity}>
-                    Recognize "{selectedText}" as Entity
-                  </button>
-                )}
-              </div>
-            )}
-
-            <h3>Saved Quotes ({quotes.length})</h3>
-            <div className="quotesStack" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {quotes.map((q) => (
-                <div 
-                  id={`quote_card_${q.evidence_id}`}
-                  key={q.evidence_id} 
-                  className={`quoteCard ${activeQuote?.evidence_id === q.evidence_id ? "active" : ""}`}
-                  onClick={() => {
-                    setActiveQuote(q);
-                    setSelectedText("");
-                  }}
-                >
-                  <div className="quoteCardHeader">
-                    <span>{sourceTitle} ({q.evidence_id.split('_').pop().toUpperCase()})</span>
-                    <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                      <span>Page {q.page}</span>
-                      {onJumpToReadingDesk && (
-                        <button
-                          title="Open Page in Reading Desk"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onJumpToReadingDesk(selectedSourceId, q.page);
-                          }}
-                          style={{
-                            background: "transparent",
-                            border: "none",
-                            color: "#284f54",
-                            cursor: "pointer",
-                            padding: "2px 4px",
-                            display: "flex",
-                            alignItems: "center"
-                          }}
-                        >
-                          <BookOpen size={13} />
-                        </button>
-                      )}
-                      {!graphReadOnly && (
-                        <button
-                          title="Delete Quote"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteQuote(q.evidence_id);
-                          }}
-                          style={{
-                            background: "transparent",
-                            border: "none",
-                            color: "#ef4444",
-                            cursor: "pointer",
-                            padding: "2px 4px",
-                            display: "flex",
-                            alignItems: "center"
-                          }}
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <div className="quoteCardBody">{q.quote}</div>
-                </div>
-              ))}
-              {quotes.length === 0 && <p className="muted">No evidence quotes saved for this source yet.</p>}
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* Right panel: SVG Interactive Graph Canvas */}
-      <div className="panel svgGraphPanel">
-        <div className="svgGraphHeader">
-          <div>
-            <h3>Evidence Graph Workspace</h3>
-            <div className="graphInstructions">
-              {graphReadOnly
-                ? "Generated graph view is read-only. Select nodes or edges to inspect evidence and provenance."
-                : "Shift+Drag from a node to another to create relationship. Double-click canvas to create new node."}
-            </div>
-          </div>
-        </div>
-
-        {selectedSourceId ? (
-          <div className="svgGraphWrapper">
-            <svg 
-              className="svgGraphCanvas"
-              onMouseMove={handleCanvasMouseMove}
-              onMouseUp={handleCanvasMouseUp}
-              onDoubleClick={async (e) => {
-                if (graphReadOnly) return;
-                if (e.target === e.currentTarget) {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const x = e.clientX - rect.left;
-                  const y = e.clientY - rect.top;
-                  const newId = `ent_${Date.now()}`;
-                  
-                  // Open modal for new entity creation
-                  setNewEntity({ canonical_name: "New Entity", name_original: "New Entity", entity_type: "person", aliasesString: "", notes: "" });
-                  setSelectedEvidenceId(activeQuote?.evidence_id || "");
-                  setEntityModalMode("create");
-                  setEntityModalOpen(true);
-                  
-                  // Temporarily place coordinate
-                  setPositions({ ...positions, [newId]: { x, y } });
-                }
-              }}
-            >
-              <defs>
-                <marker id="arrow" viewBox="0 0 10 10" refX="17" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#5c686a" />
-                </marker>
-              </defs>
-
-              {/* Edge claims */}
-              {edges.map((edge) => {
-                const subPos = positions[edge.subject_entity_id];
-                const objPos = positions[edge.object_entity_id];
-                if (!subPos || !objPos) return null;
-
-                const dx = objPos.x - subPos.x;
-                const dy = objPos.y - subPos.y;
-                const midX = (subPos.x + objPos.x) / 2;
-                const midY = (subPos.y + objPos.y) / 2;
-
-                return (
-                  <g 
-                    key={edge.relationship_id}
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => setSelectedEdgeRelation(edge)}
-                  >
-                    <line 
-                      x1={subPos.x} 
-                      y1={subPos.y} 
-                      x2={objPos.x} 
-                      y2={objPos.y} 
-                      className="graphEdge"
-                      markerEnd="url(#arrow)"
-                    />
-                    <text 
-                      x={midX} 
-                      y={midY - 8} 
-                      className="edgeLabel"
-                      textAnchor="middle"
-                    >
-                      {edge.relation_type}
-                    </text>
-                  </g>
-                );
-              })}
-
-              {/* Drawing temporary Edge claim */}
-              {drawingEdgeFromId && positions[drawingEdgeFromId] && (
-                <line 
-                  x1={positions[drawingEdgeFromId].x} 
-                  y1={positions[drawingEdgeFromId].y} 
-                  x2={mousePos.x} 
-                  y2={mousePos.y} 
-                  style={{ stroke: "#7d3d2f", strokeWidth: 2, strokeDasharray: "4 4" }}
-                />
-              )}
-
-              {/* Nodes */}
-              {nodes.map((node) => {
-                const pos = positions[node.entity_id] || { x: 100, y: 100 };
-                const nodeColors = { person: "#ffd700", place: "#90ee90", organization: "#add8e6" };
-                const fill = nodeColors[node.entity_type] || "#ffffff";
-
-                return (
-                  <g 
-                    key={node.entity_id}
-                    transform={`translate(${pos.x}, ${pos.y})`}
-                    className="graphNode"
-                    onMouseDown={(e) => handleNodeMouseDown(e, node.entity_id)}
-                    onMouseUp={(e) => handleNodeMouseUp(e, node.entity_id)}
-                    onClick={() => {
-                      setSelectedNodeEntity({
-                        ...node,
-                        aliasesString: node.aliases?.join(", ") || ""
-                      });
-                    }}
-                  >
-                    <circle 
-                      r="16" 
-                      fill={fill} 
-                      stroke="#394649" 
-                      strokeWidth="1.5"
-                    />
-                    <text 
-                      y="26" 
-                      className="nodeText"
-                    >
-                      {node.canonical_name}
-                    </text>
-                    {/* Small dragging handle handle */}
-                    <circle 
-                      cx="12" 
-                      cy="-12" 
-                      r="4" 
-                      className="nodeHandle"
-                    >
-                      <title>Shift+Drag to connect</title>
-                    </circle>
-                  </g>
-                );
-              })}
-            </svg>
-          </div>
-        ) : (
-          <div className="emptyState">Select a source project on the left to activate workspace.</div>
-        )}
-      </div>
-
-      {/* Entity modal (create/link) */}
-      {entityModalOpen && (
-        <div className="customModalOverlay">
-          <div className="customModal">
-            <h3 className="customModalTitle">Approve Entity Mention</h3>
-            <div className="editorToolbar" style={{ marginBottom: 12 }}>
-              <button 
-                className={`quietButton light ${entityModalMode === "create" ? "active" : ""}`}
-                onClick={() => setEntityModalMode("create")}
-              >
-                Create New Entity
-              </button>
-              <button 
-                className={`quietButton light ${entityModalMode === "link" ? "active" : ""}`}
-                onClick={() => setEntityModalMode("link")}
-              >
-                Link to Existing Entity
-              </button>
-            </div>
-
-            {entityModalMode === "create" ? (
-              <div className="customModalBody">
-                <label className="deskField">
-                  <span>Canonical Name</span>
-                  <input 
-                    type="text" 
-                    value={newEntity.canonical_name}
-                    onChange={(e) => setNewEntity({ ...newEntity, canonical_name: e.target.value })}
-                  />
-                </label>
-                <CategorySelector
-                  label="Type"
-                  value={newEntity.entity_type}
-                  onChange={(val) => setNewEntity({ ...newEntity, entity_type: val })}
-                  types={entityTypes}
-                  setTypes={setEntityTypes}
-                  isEntity={true}
-                />
-                <label className="deskField">
-                  <span>Aliases (comma separated)</span>
-                  <input 
-                    type="text" 
-                    value={newEntity.aliasesString}
-                    onChange={(e) => setNewEntity({ ...newEntity, aliasesString: e.target.value })}
-                  />
-                </label>
-              </div>
-            ) : (
-              <div className="customModalBody">
-                <label className="deskField">
-                  <span>Select Entity</span>
-                  <select 
-                    value={linkToEntityId}
-                    onChange={(e) => setLinkToEntityId(e.target.value)}
-                  >
-                    <option value="">Choose entity...</option>
-                    {nodes.map(n => (
-                      <option key={n.entity_id} value={n.entity_id}>
-                        {n.canonical_name} ({n.entity_type})
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-            )}
-
-            {/* Evidence Selector Dropdown */}
-            <div className="customModalBody" style={{ marginTop: 12, borderTop: "1px solid #eee", paddingTop: 12 }}>
-              <label className="deskField">
-                <span>Evidence Quote</span>
-                <select 
-                  value={selectedEvidenceId}
-                  onChange={(e) => setSelectedEvidenceId(e.target.value)}
-                  title={quotes.find(q => q.evidence_id === selectedEvidenceId)?.quote || "No quote selected"}
-                >
-                  <option value="">No Evidence (Do not create mention)</option>
-                  {quotes.map(q => (
-                    <option key={q.evidence_id} value={q.evidence_id} title={q.quote}>
-                      {sourceTitle} - Page {q.page} ({q.evidence_id.split('_').pop().toUpperCase()}): {q.quote.length > 60 ? q.quote.substring(0, 60) + "..." : q.quote}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <div className="customModalActions">
-              <button className="quietButton light" onClick={() => setEntityModalOpen(false)}>Cancel</button>
-              <button className="primaryButton" onClick={handleSaveEntityApproval}>Approve mention</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Relationship Modal */}
-      {relModalOpen && (
-        <div className="customModalOverlay">
-          <div className="customModal">
-            <h3 className="customModalTitle">Create Relationship</h3>
-            <div className="customModalBody">
-              <CategorySelector
-                label="Relation Type"
-                value={newRel.relation_type || "spouse"}
-                onChange={(val) => setNewRel({ ...newRel, relation_type: val })}
-                types={relationTypes}
-                setTypes={setRelationTypes}
-                isEntity={false}
-              />
-              <label className="deskField">
-                <span>Confidence</span>
-                <select 
-                  value={newRel.confidence} 
-                  onChange={(e) => setNewRel({ ...newRel, confidence: e.target.value })}
-                >
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
-                </select>
-              </label>
-              <label className="deskField">
-                <span>Evidence Quote</span>
-                <select 
-                  value={newRel.evidence_id || ""} 
-                  onChange={(e) => setNewRel({ ...newRel, evidence_id: e.target.value })}
-                  title={quotes.find(q => q.evidence_id === newRel.evidence_id)?.quote || "No quote selected"}
-                >
-                  <option value="">Select a quote...</option>
-                  {quotes.map(q => (
-                    <option key={q.evidence_id} value={q.evidence_id} title={q.quote}>
-                      {sourceTitle} - Page {q.page} ({q.evidence_id.split('_').pop().toUpperCase()}): {q.quote.length > 60 ? q.quote.substring(0, 60) + "..." : q.quote}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="deskField">
-                <span>Note</span>
-                <textarea 
-                  value={newRel.note} 
-                  onChange={(e) => setNewRel({ ...newRel, note: e.target.value })}
-                />
-              </label>
-            </div>
-            <div className="customModalActions">
-              <button className="quietButton light" onClick={() => setRelModalOpen(false)}>Cancel</button>
-              <button className="primaryButton" onClick={handleSaveRelationship}>Create Edge</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Selected Node Inspector / Editor */}
-      {selectedNodeEntity && (
-        <div className="customModalOverlay">
-          <div className="customModal">
-            <h3 className="customModalTitle">Inspect / Edit Node Entity</h3>
-            <div className="customModalBody">
-              <label className="deskField">
-                <span>Canonical Name</span>
-                <input 
-                  type="text" 
-                  value={selectedNodeEntity.canonical_name || ""} 
-                  onChange={(e) => setSelectedNodeEntity({ ...selectedNodeEntity, canonical_name: e.target.value })}
-                />
-              </label>
-              <label className="deskField">
-                <span>Name (Original)</span>
-                <input 
-                  type="text" 
-                  value={selectedNodeEntity.name_original || ""} 
-                  onChange={(e) => setSelectedNodeEntity({ ...selectedNodeEntity, name_original: e.target.value })}
-                />
-              </label>
-              <CategorySelector
-                label="Type"
-                value={selectedNodeEntity.entity_type || "person"}
-                onChange={(val) => setSelectedNodeEntity({ ...selectedNodeEntity, entity_type: val })}
-                types={entityTypes}
-                setTypes={setEntityTypes}
-                isEntity={true}
-              />
-              <label className="deskField">
-                <span>Aliases (comma separated)</span>
-                <input 
-                  type="text" 
-                  value={selectedNodeEntity.aliasesString || ""} 
-                  onChange={(e) => setSelectedNodeEntity({ ...selectedNodeEntity, aliasesString: e.target.value })}
-                />
-              </label>
-              <label className="deskField">
-                <span>Notes</span>
-                <textarea 
-                  value={selectedNodeEntity.notes || ""} 
-                  onChange={(e) => setSelectedNodeEntity({ ...selectedNodeEntity, notes: e.target.value })}
-                />
-              </label>
-              <div className="deskField">
-                <span>Linked Evidence Quotes</span>
-                <div className="inspectorQuotesList" style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid #ccc', padding: 8, borderRadius: 4, background: '#f9f9f9', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {(() => {
-                    const mentionsForNode = (artifact?.entity_mentions || []).filter(m => m.entity_id === selectedNodeEntity.entity_id);
-                    if (mentionsForNode.length === 0) {
-                      return <span style={{ color: '#666', fontStyle: 'italic' }}>No linked evidence quotes.</span>;
-                    }
-                    return mentionsForNode.map(mention => {
-                      const matchingQuote = quotes.find(q => q.evidence_id === mention.evidence_id);
-                      if (!matchingQuote) return null;
-                      return (
-                        <div key={mention.mention_id} style={{ fontSize: '0.9rem', borderBottom: '1px solid #eee', paddingBottom: 6 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', color: '#666', marginBottom: 2 }}>
-                            <strong>{selectedSourceId === "project" ? `${matchingQuote.source_id} · ` : ""}Page {matchingQuote.page}</strong>
-                            <div style={{ display: "flex", gap: "6px" }}>
-                              <button
-                                type="button"
-                                onClick={() => handleLocateQuote(matchingQuote)}
-                                style={{
-                                  background: "#eef3f1",
-                                  border: "1px solid #cbdad6",
-                                  color: "#284f54",
-                                  borderRadius: "4px",
-                                  padding: "2px 6px",
-                                  fontSize: "0.75rem",
-                                  cursor: "pointer",
-                                  display: "inline-flex",
-                                  alignItems: "center"
-                                }}
-                              >
-                                Locate Quote
-                              </button>
-                              {onJumpToReadingDesk && (
-                                <button
-                                  type="button"
-                                  onClick={() => onJumpToReadingDesk(matchingQuote.source_id, matchingQuote.page)}
-                                  style={{
-                                    background: "#eef3f1",
-                                    border: "1px solid #cbdad6",
-                                    color: "#284f54",
-                                    borderRadius: "4px",
-                                    padding: "2px 6px",
-                                    fontSize: "0.75rem",
-                                    cursor: "pointer",
-                                    display: "inline-flex",
-                                    alignItems: "center"
-                                  }}
-                                >
-                                  Locate in Reading Desk
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                          <div style={{ fontStyle: 'italic', color: '#333' }}>"{matchingQuote.quote}"</div>
-                        </div>
-                      );
-                    });
-                  })()}
-                </div>
-              </div>
-            </div>
-            <div className="customModalActions">
-              {!graphReadOnly && <button className="quietButton light deleteButton" onClick={handleDeleteNodeEntity}>Delete Node</button>}
-              {!graphReadOnly && onMergeTrigger && (
-                <button 
-                  className="quietButton light" 
-                  style={{ color: "var(--color-primary, #284f54)", borderColor: "var(--color-primary, #284f54)" }}
-                  onClick={() => {
-                    onMergeTrigger(selectedNodeEntity.entity_id);
-                    setSelectedNodeEntity(null);
-                  }}
-                >
-                  Merge...
-                </button>
-              )}
-              <div style={{ flex: 1 }}></div>
-              <button className="quietButton light" onClick={() => setSelectedNodeEntity(null)}>Cancel</button>
-              {!graphReadOnly && <button className="primaryButton" onClick={handleUpdateNodeEntity}>Save Node</button>}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Selected Edge Inspector / Editor */}
-      {selectedEdgeRelation && (
-        <div className="customModalOverlay">
-          <div className="customModal">
-            <h3 className="customModalTitle">Inspect Edge Relationship</h3>
-            <div className="customModalBody">
-              <label className="deskField">
-                <span>Subject Entity</span>
-                <input 
-                  type="text" 
-                  value={nodes.find(n => n.entity_id === selectedEdgeRelation.subject_entity_id)?.canonical_name || selectedEdgeRelation.subject_entity_id} 
-                  disabled 
-                />
-              </label>
-              <label className="deskField">
-                <span>Object Entity</span>
-                <input 
-                  type="text" 
-                  value={nodes.find(n => n.entity_id === selectedEdgeRelation.object_entity_id)?.canonical_name || selectedEdgeRelation.object_entity_id} 
-                  disabled 
-                />
-              </label>
-              
-              <CategorySelector
-                label="Relationship Type"
-                value={selectedEdgeRelation.relation_type || ""}
-                onChange={(val) => setSelectedEdgeRelation({ ...selectedEdgeRelation, relation_type: val })}
-                types={relationTypes}
-                setTypes={setRelationTypes}
-                isEntity={false}
-              />
-              
-              <label className="deskField">
-                <span>Confidence</span>
-                <select 
-                  value={selectedEdgeRelation.confidence || "medium"}
-                  onChange={(e) => setSelectedEdgeRelation({ ...selectedEdgeRelation, confidence: e.target.value })}
-                >
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
-                </select>
-              </label>
-              <label className="deskField">
-                <span>Notes</span>
-                <textarea 
-                  value={selectedEdgeRelation.note || ""} 
-                  onChange={(e) => setSelectedEdgeRelation({ ...selectedEdgeRelation, note: e.target.value })}
-                />
-              </label>
-
-              <label className="deskField">
-                <span>Evidence Quote</span>
-                <div style={{ padding: 8, border: '1px solid #ccc', borderRadius: 4, background: '#f9f9f9' }}>
-                  {(() => {
-                    const matchingQuote = quotes.find(q => q.evidence_id === selectedEdgeRelation.evidence_id);
-                    if (!matchingQuote) {
-                      return <span style={{ color: '#666', fontStyle: 'italic' }}>No linked evidence quote found ({selectedEdgeRelation.evidence_id}).</span>;
-                    }
-                     return (
-                      <div style={{ fontSize: '0.9rem' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', color: '#666', marginBottom: 2 }}>
-                          <strong>{selectedSourceId === "project" ? `${matchingQuote.source_id} · ` : ""}Page {matchingQuote.page}</strong>
-                          <div style={{ display: "flex", gap: "6px" }}>
-                            <button
-                              type="button"
-                              onClick={() => handleLocateQuote(matchingQuote)}
-                              style={{
-                                background: "#eef3f1",
-                                border: "1px solid #cbdad6",
-                                color: "#284f54",
-                                borderRadius: "4px",
-                                padding: "2px 6px",
-                                fontSize: "0.75rem",
-                                cursor: "pointer",
-                                display: "inline-flex",
-                                alignItems: "center"
-                              }}
-                            >
-                              Locate Quote
-                            </button>
-                            {onJumpToReadingDesk && (
-                              <button
-                                type="button"
-                                onClick={() => onJumpToReadingDesk(matchingQuote.source_id, matchingQuote.page)}
-                                style={{
-                                  background: "#eef3f1",
-                                  border: "1px solid #cbdad6",
-                                  color: "#284f54",
-                                  borderRadius: "4px",
-                                  padding: "2px 6px",
-                                  fontSize: "0.75rem",
-                                  cursor: "pointer",
-                                  display: "inline-flex",
-                                  alignItems: "center"
-                                }}
-                              >
-                                Locate in Reading Desk
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                        <div style={{ fontStyle: 'italic', color: '#333' }}>"{matchingQuote.quote}"</div>
-                      </div>
-                     );
-                  })()}
-                </div>
-              </label>
-            </div>
-            
-            <div className="customModalActions">
-              {!graphReadOnly && <button className="quietButton light deleteButton" onClick={handleDeleteEdgeRelation}>Delete Edge</button>}
-              <div style={{ flex: 1 }}></div>
-              <button className="quietButton light" onClick={() => setSelectedEdgeRelation(null)}>Cancel</button>
-              {!graphReadOnly && <button className="primaryButton" onClick={handleUpdateEdgeRelation}>Save Edge</button>}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+  
+  return lines.join("\n");
 }
-
-function CategorySelector({ label, value, onChange, types, setTypes, isEntity }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const inputId = useMemo(() => `new_type_input_${Math.random().toString(36).substr(2, 9)}`, []);
-
-  const handleAdd = () => {
-    const input = document.getElementById(inputId) as HTMLInputElement | null;
-    const val = input?.value.trim().toLowerCase();
-    if (val && !types.includes(val)) {
-      setTypes([...types, val]);
-      input.value = "";
-    }
-  };
-
-  return (
-    <div style={{ marginBottom: 12 }}>
-      <label className="deskField" style={{ marginBottom: 4 }}>
-        <span>{label}</span>
-        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-          <select 
-            value={value || ""}
-            onChange={(e) => onChange(e.target.value)}
-            style={{ flex: 1 }}
-          >
-            {types.map(t => (
-              <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
-            ))}
-          </select>
-          <button 
-            type="button" 
-            className="quietButton light" 
-            onClick={() => setIsOpen(!isOpen)}
-            style={{ padding: "4px 8px", fontSize: "0.8rem", height: "auto" }}
-          >
-            Manage
-          </button>
-        </div>
-      </label>
-      {isOpen && (
-        <div className="manageTypesBox" style={{ background: "var(--bg-surface-elevated, #f9f9f9)", padding: 10, borderRadius: 6, border: "1px solid var(--border-color)", marginTop: 6 }}>
-          <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-            <input 
-              type="text" 
-              id={inputId} 
-              placeholder="Add new category..." 
-              style={{ flex: 1, padding: "4px 8px", fontSize: 12, border: "1px solid var(--border-color)", borderRadius: 4, background: "var(--bg-surface, #fff)", color: "var(--text-primary)" }} 
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  handleAdd();
-                }
-              }}
-            />
-            <button 
-              type="button" 
-              className="primaryButton" 
-              style={{ padding: "4px 10px", fontSize: 12, height: "auto" }}
-              onClick={handleAdd}
-            >
-              Add
-            </button>
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-            {types.map(t => (
-              <span key={t} className="typeTag" style={{ background: "var(--bg-surface-elevated, #e2e8f0)", border: "1px solid var(--border-color)", padding: "2px 6px", borderRadius: 4, fontSize: 11, display: "flex", alignItems: "center", gap: 4, color: "var(--text-primary)" }}>
-                {t}
-                {(!isEntity || (t !== "person" && t !== "place" && t !== "organization")) && 
-                 (isEntity || t !== "spouse") && (
-                  <span 
-                    style={{ cursor: "pointer", color: "#ef4444", fontWeight: "bold" }} 
-                    onClick={() => setTypes(types.filter(x => x !== t))}
-                  >
-                    ×
-                  </span>
-                )}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-
-function MergeEntitiesModal({ isOpen, onClose, entities, onMerge, initialTargetId = "" }) {
-  const [targetId, setTargetId] = useState(initialTargetId);
-  const [selectedSourceIds, setSelectedSourceIds] = useState([]);
-
-  useEffect(() => {
-    if (isOpen) {
-      setTargetId(initialTargetId);
-      setSelectedSourceIds([]);
-    }
-  }, [isOpen, initialTargetId]);
-
-  if (!isOpen) return null;
-
-  // Filter out the target entity from candidate source entities
-  const candidateSources = entities.filter(e => e.entity_id !== targetId);
-
-  const handleCheckboxChange = (entityId, checked) => {
-    if (checked) {
-      setSelectedSourceIds([...selectedSourceIds, entityId]);
-    } else {
-      setSelectedSourceIds(selectedSourceIds.filter(id => id !== entityId));
-    }
-  };
-
-  const handleSubmit = () => {
-    if (!targetId) {
-      alert("Please select a target entity.");
-      return;
-    }
-    if (selectedSourceIds.length === 0) {
-      alert("Please select at least one entity to merge.");
-      return;
-    }
-    onMerge(targetId, selectedSourceIds);
-  };
-
-  return (
-    <div className="customModalOverlay">
-      <div className="customModal" style={{ maxWidth: 500 }}>
-        <h3 className="customModalTitle">Merge Entities</h3>
-        <div className="customModalBody">
-          <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: 16 }}>
-            Select the primary entity name. All other selected entities will be merged into it, and their names and aliases will become aliases of the primary entity. The merged entity will inherit all mentions, relationships, and attitude claims.
-          </p>
-          
-          <label className="deskField">
-            <span>Primary Entity (Surviving Node)</span>
-            <select value={targetId} onChange={(e) => {
-              setTargetId(e.target.value);
-              setSelectedSourceIds([]);
-            }}>
-              <option value="">Select primary entity...</option>
-              {entities.map(e => (
-                <option key={e.entity_id} value={e.entity_id}>
-                  {e.canonical_name} ({e.entity_type}) - {e.entity_id}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          {targetId && (
-            <div className="deskField" style={{ marginTop: 12 }}>
-              <span>Select Entities to Merge (Other Nodes to Combine)</span>
-              <div style={{ maxHeight: 200, overflowY: "auto", border: "1px solid var(--border-color)", borderRadius: 4, padding: 8, background: "var(--bg-surface-elevated)" }}>
-                {candidateSources.map(e => (
-                  <label key={e.entity_id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", cursor: "pointer", fontSize: "0.9rem" }}>
-                    <input 
-                      type="checkbox" 
-                      checked={selectedSourceIds.includes(e.entity_id)}
-                      onChange={(evt) => handleCheckboxChange(e.entity_id, evt.target.checked)}
-                    />
-                    <span>{e.canonical_name} ({e.entity_type}) - <small>{e.entity_id}</small></span>
-                  </label>
-                ))}
-                {candidateSources.length === 0 && (
-                  <span style={{ color: "var(--text-secondary)", fontStyle: "italic" }}>No other entities available to merge.</span>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-        <div className="customModalActions">
-          <button className="quietButton light" onClick={onClose}>Cancel</button>
-          <button className="primaryButton" onClick={handleSubmit} disabled={!targetId || selectedSourceIds.length === 0}>Merge Nodes</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 
 export default Workbench;

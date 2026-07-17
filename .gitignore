@@ -26,3 +26,15 @@ frontend/.vite/
 .DS_Store
 *.swp
 *.swo
+
+# Build outputs
+build/
+dist/
+
+# Local databases and project folders
+db/
+projects/
+
+# Logs
+*.log
+

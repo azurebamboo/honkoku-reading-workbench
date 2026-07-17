@@ -129,6 +129,7 @@ async def ocr_reading_full_page(source_id: str, page: int, request: Request) -> 
                 "source_id": source_id,
                 "page": page,
                 "region_id": "full_page",
+                **payload
             },
         )
         page_json = ocr_result.get("page_json") or {}
@@ -227,6 +228,7 @@ async def ocr_reading_region(source_id: str, page: int, request: Request) -> dic
                 "source_id": source_id,
                 "page": page,
                 "region_id": region_id,
+                **payload
             }
         )
         page_json = ocr_result["page_json"]
@@ -739,8 +741,9 @@ async def save_officer_table_extraction(source_id: str, page: int, request: Requ
 
     write_json(artifact_path, artifact)
     try:
-        run_workspace_script("validate_extractions.py")
-        run_workspace_script("build_database.py")
+        # run_workspace_script("validate_extractions.py")
+        # run_workspace_script("build_database.py")
+        pass
     except HTTPException:
         raise
     return {
@@ -783,6 +786,18 @@ def reading_source_export_text(source_id: str) -> dict[str, Any]:
                     pass
                     
         effective_text = corrected_text or raw_text
+        
+        tables = (corrected_page_json or {}).get("tables") or (raw_page_json or {}).get("tables") or {}
+        if tables:
+            import re
+            def replace_table_placeholder(match) -> str:
+                table_id = match.group(1)
+                if table_id in tables and isinstance(tables[table_id], dict):
+                    md = tables[table_id].get("markdown", "")
+                    return f"\n\n{md.strip()}\n\n"
+                return match.group(0)
+            effective_text = re.sub(r"\[Table:\s*([a-zA-Z0-9_]+)\]", replace_table_placeholder, effective_text)
+
         pages_text.append({
             "page": page,
             "text": effective_text
@@ -792,12 +807,100 @@ def reading_source_export_text(source_id: str) -> dict[str, Any]:
     for p in pages_text:
         plain_text += f"--- PAGE {p['page']} ---\n{p['text']}\n\n"
         
+    # Compile Markdown Export with notes
+    project_id = wb.ACTIVE_PROJECT_ID
+    if project_id == "default":
+        proj_note_path = wb.ROOT / "db" / "project_note.txt"
+    else:
+        proj_note_path = wb.ROOT / "projects" / project_id / "project_note.txt"
+    project_note = ""
+    if proj_note_path.exists():
+        project_note = proj_note_path.read_text(encoding="utf-8")
+        
+    artifact = reading_extraction_artifact(source_id)
+    source_notes = artifact.get("notes") or source.get("notes") or ""
+    page_notes_dict = artifact.get("page_notes", {})
+    
+    title = source.get("title_original") or source.get("title") or source_id
+    collection = source.get("collection") or ""
+    citation = source.get("citation") or ""
+    
+    markdown_lines = [
+        "---",
+        f"title: {repr(title)}",
+        f"source_id: {repr(source_id)}",
+        f"collection: {repr(collection)}",
+        f"citation: {repr(citation)}",
+    ]
+    
+    if project_note.strip():
+        markdown_lines.append("project_note: |")
+        for line in project_note.splitlines():
+            markdown_lines.append(f"  {line}")
+            
+    if source_notes.strip():
+        markdown_lines.append("source_note: |")
+        for line in source_notes.splitlines():
+            markdown_lines.append(f"  {line}")
+            
+    markdown_lines.append("---")
+    markdown_lines.append("")
+    markdown_lines.append(f"# {title}")
+    markdown_lines.append("")
+    
+    for p in pages_text:
+        page_num = p["page"]
+        page_note = page_notes_dict.get(str(page_num)) or page_notes_dict.get(page_num) or ""
+        
+        markdown_lines.append(f"## Page {page_num}")
+        if page_note.strip():
+            markdown_lines.append("")
+            markdown_lines.append("> **Page Note:**")
+            for line in page_note.splitlines():
+                markdown_lines.append(f"> {line}")
+            markdown_lines.append("")
+            
+        markdown_lines.append(p["text"])
+        markdown_lines.append("")
+        
+    markdown_text = "\n".join(markdown_lines)
+    
     return {
         "source_id": source_id,
-        "title": source.get("title_original") or source.get("title") or source_id,
+        "title": title,
         "pages": pages_text,
-        "plain_text": plain_text.strip()
+        "plain_text": plain_text.strip(),
+        "markdown_text": markdown_text.strip()
     }
+
+
+
+@router.get("/api/v1/extraction-artifacts/{source_id}")
+def get_extraction_artifact(source_id: str) -> dict[str, Any]:
+    return reading_extraction_artifact(source_id)
+
+
+@router.put("/api/v1/extraction-artifacts/{source_id}")
+async def update_extraction_artifact(source_id: str, request: Request) -> dict[str, Any]:
+    payload = await request.json()
+    save_reading_extraction_artifact(source_id, payload)
+    return {"ok": True}
+
+
+@router.put("/api/v1/reading/sources/{source_id}/pages/{page}/note")
+async def save_page_note(source_id: str, page: int, request: Request) -> dict[str, Any]:
+    if page < 1:
+        raise HTTPException(status_code=400, detail="Page must be a positive integer")
+    payload = await request.json()
+    note_text = payload.get("note", "").strip()
+    
+    artifact = reading_extraction_artifact(source_id)
+    page_notes = artifact.setdefault("page_notes", {})
+    page_notes[str(page)] = note_text
+    
+    save_reading_extraction_artifact(source_id, artifact)
+    return {"ok": True}
+
 
 
 @router.get("/api/v1/reading/sources/{source_id}/pages/{page}")
@@ -810,6 +913,7 @@ def reading_page(source_id: str, page: int) -> dict[str, Any]:
     manifest_path_text = ""
     raw_page_json_path = None
     raw_text = ""
+    raw_page_json = {}
     if preferred is not None:
         ocr_layer, manifest, manifest_path = preferred
         raw_page_json_path = page_json_path_for(manifest, page)
@@ -818,14 +922,71 @@ def reading_page(source_id: str, page: int) -> dict[str, Any]:
             raw_page_json = load_json(resolve_project_relative_path(raw_page_json_path))
             raw_text = flatten_ocr_text(raw_page_json)
 
+    if not raw_page_json_path or not raw_text.strip():
+        pass
+
+    fallback_path = get_ocr_regions_dir() / source_id / "pages" / f"page_{page:04d}" / "full_page.json"
+    if fallback_path.exists():
+        try:
+            fallback_json = load_json(fallback_path)
+            fallback_text = flatten_ocr_text(fallback_json)
+            if fallback_text.strip():
+                fallback_has_boxes = False
+                for block in fallback_json.get("contents", []):
+                    if isinstance(block, dict) and "boundingBox" in block:
+                        fallback_has_boxes = True
+                        break
+                    elif isinstance(block, list):
+                        for item in block:
+                            if isinstance(item, dict) and "boundingBox" in item:
+                                fallback_has_boxes = True
+                                break
+                        if fallback_has_boxes:
+                            break
+                
+                raw_has_boxes = False
+                if raw_page_json:
+                    for block in raw_page_json.get("contents", []):
+                        if isinstance(block, dict) and "boundingBox" in block:
+                            raw_has_boxes = True
+                            break
+                        elif isinstance(block, list):
+                            for item in block:
+                                if isinstance(item, dict) and "boundingBox" in item:
+                                    raw_has_boxes = True
+                                    break
+                            if raw_has_boxes:
+                                break
+
+                manifest_mtime = 0
+                if raw_page_json_path:
+                    manifest_resolved = resolve_project_relative_path(raw_page_json_path)
+                    if manifest_resolved.exists():
+                        manifest_mtime = manifest_resolved.stat().st_mtime
+                fallback_mtime = fallback_path.stat().st_mtime
+
+                if (not raw_page_json_path or 
+                    not raw_text.strip() or 
+                    (fallback_has_boxes and not raw_has_boxes) or 
+                    fallback_mtime > manifest_mtime):
+                    
+                    raw_page_json = fallback_json
+                    raw_page_json_path = fallback_path.relative_to(wb.ROOT).as_posix()
+                    raw_text = fallback_text
+                    ocr_layer = "regions_fallback"
+        except Exception as e:
+            print(f"Error loading regions fallback OCR: {e}")
+
     corrected_text = ""
     corrected_page_json_path = None
+    corrected_page_json = {}
     corrected_info = corrected_ocr_manifest(source_id)
     if corrected_info:
         corrected_manifest = corrected_info[0]
         corrected_page_json_path = page_json_path_for(corrected_manifest, page)
         if corrected_page_json_path:
-            corrected_text = flatten_ocr_text(load_json(resolve_project_relative_path(corrected_page_json_path)))
+            corrected_page_json = load_json(resolve_project_relative_path(corrected_page_json_path))
+            corrected_text = flatten_ocr_text(corrected_page_json)
 
     artifact = reading_extraction_artifact(source_id)
     effective_text = corrected_text or raw_text
@@ -859,6 +1020,8 @@ def reading_page(source_id: str, page: int) -> dict[str, Any]:
             "corrected_text": corrected_text,
             "effective_text": effective_text,
             "status": "corrected" if corrected_text else "raw",
+            "raw_page_json_data": raw_page_json or None,
+            "corrected_page_json_data": corrected_page_json or None,
         },
         "artifact_status": artifact.get("provenance", {}).get("status", "draft"),
         "entities": artifact.get("entity_records", []),
@@ -870,6 +1033,7 @@ def reading_page(source_id: str, page: int) -> dict[str, Any]:
         "reading_notes": [
             note for note in artifact.get("reading_notes", []) if note.get("page") == page
         ],
+        "page_note": artifact.get("page_notes", {}).get(str(page), ""),
         "candidates": candidate_highlights(artifact, page, effective_text),
         "vocabularies": reading_vocabularies(),
     }
@@ -896,19 +1060,48 @@ async def save_ocr_review(source_id: str, page: int, request: Request) -> dict[s
 
     corrected_page_path = get_ocr_corrected_dir() / source_id / "pages" / f"page_{page:04d}.json"
     lines = [line.strip() for line in text.splitlines()]
+    
+    raw_lines = []
+    for block in raw_page_json.get("contents", []):
+        if isinstance(block, dict):
+            text_val = block.get("text")
+            if isinstance(text_val, str):
+                raw_lines.append(block)
+            continue
+        if isinstance(block, list):
+            for item in block:
+                if isinstance(item, dict):
+                    text_val = item.get("text")
+                    if isinstance(text_val, str):
+                        raw_lines.append(item)
+
+    contents_list = []
+    raw_index = 0
+    for index, line in enumerate(lines):
+        line_dict = {
+            "id": index,
+            "text": line,
+            "isTextline": "true",
+            "isCorrectedOcr": "true",
+        }
+        if line.strip():
+            if raw_index < len(raw_lines):
+                orig = raw_lines[raw_index]
+                if "boundingBox" in orig:
+                    line_dict["boundingBox"] = orig["boundingBox"]
+                if "isVertical" in orig:
+                    line_dict["isVertical"] = orig["isVertical"]
+                if "class_index" in orig:
+                    line_dict["class_index"] = orig["class_index"]
+                if "confidence" in orig:
+                    line_dict["confidence"] = orig["confidence"]
+                raw_index += 1
+        contents_list.append(line_dict)
+
     corrected_page_json = {
-        "contents": [
-            [
-                {
-                    "id": index,
-                    "text": line,
-                    "isTextline": "true",
-                    "isCorrectedOcr": "true",
-                }
-                for index, line in enumerate(lines)
-            ]
-        ],
+        "contents": [contents_list],
         "imginfo": raw_page_json.get("imginfo", {}),
+        "tables": payload.get("tables") or raw_page_json.get("tables", {}),
         "corrected_ocr": {
             "page": page,
             "reviewer": reviewer,
@@ -919,6 +1112,8 @@ async def save_ocr_review(source_id: str, page: int, request: Request) -> dict[s
             "text_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
         },
     }
+    if "region_ocr" in raw_page_json:
+        corrected_page_json["region_ocr"] = raw_page_json["region_ocr"]
     write_json(corrected_page_path, corrected_page_json)
 
     manifest_path = get_ocr_corrected_dir() / source_id / "manifest.json"

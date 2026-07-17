@@ -10,6 +10,7 @@ import zipfile
 import subprocess
 import sys
 import tempfile
+import threading
 import os
 import shutil
 from datetime import datetime, timezone
@@ -23,11 +24,26 @@ from fastapi.responses import FileResponse
 from backend.app.services.worker_ai import analyze_page_with_worker, worker_config_from_env
 
 
-ROOT = Path(__file__).resolve().parents[3]
-NDLOCR_VENDOR_DIR = ROOT / "tools" / "vendor" / "ndlocr-lite"
+if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+    BUNDLE_ROOT = Path(sys._MEIPASS)
+else:
+    BUNDLE_ROOT = Path(__file__).resolve().parents[3]
+
+if getattr(sys, 'frozen', False):
+    exe_dir = Path(sys.executable).parent
+    if exe_dir.name == "koshu-ocr-backend" and exe_dir.parent.name == "dist":
+        DATA_ROOT = exe_dir.parent.parent
+    else:
+        DATA_ROOT = exe_dir
+else:
+    DATA_ROOT = Path(__file__).resolve().parents[3]
+
+ROOT = DATA_ROOT
+NDLOCR_VENDOR_DIR = BUNDLE_ROOT / "tools" / "vendor" / "ndlocr-lite"
 EDITABLE_EXTRACTION_SOURCE_IDS = {"raw_ee2029d2f4ef", "raw_8ab4cdc4678e"}
 
-ACTIVE_PROJECT_FILE = ROOT / "db" / "active_project.txt"
+ACTIVE_PROJECT_FILE = DATA_ROOT / "db" / "active_project.txt"
+_pdf_render_lock = threading.RLock()
 
 def is_testing_environment() -> bool:
     import sys
@@ -173,7 +189,9 @@ load_env()
 def get_available_engines() -> dict[str, Any]:
     from backend.app.core.providers import (
         NDLOCREngine,
-        VisionLLMOCREngine
+        VisionLLMOCREngine,
+        MineruOCREngine,
+        PaddleOCREngine
     )
     engines = {
         "ndlocr_lite": NDLOCREngine()
@@ -194,6 +212,18 @@ def get_available_engines() -> dict[str, Any]:
         model = os.getenv("ANTHROPIC_MODEL")
         engines["vision_llm_anthropic"] = VisionLLMOCREngine("anthropic", anthropic_key, model)
         
+    mineru_key = os.getenv("MINERU_API_KEY")
+    if mineru_key:
+        model = os.getenv("MINERU_MODEL") or "vlm"
+        api_url = os.getenv("MINERU_API_URL") or "https://mineru.net"
+        engines["mineru"] = MineruOCREngine(mineru_key, api_url, model)
+
+    paddleocr_key = os.getenv("PADDLEOCR_API_KEY")
+    if paddleocr_key:
+        paddleocr_url = os.getenv("PADDLEOCR_API_URL") or "https://paddleocr.aistudio-app.com/api/v2/ocr/jobs"
+        paddleocr_model = os.getenv("PADDLEOCR_MODEL") or "PaddleOCR-VL-1.6"
+        engines["paddleocr"] = PaddleOCREngine(paddleocr_key, paddleocr_url, paddleocr_model)
+
     return engines
 
 
@@ -508,25 +538,26 @@ def render_pdf_page_image(source: dict[str, Any], page: int) -> Path:
     if page < 1:
         raise HTTPException(status_code=400, detail="Page must be a positive integer")
     output_path = rendered_page_image_path(source["source_id"], page)
-    if output_path.exists():
-        return output_path
-    try:
-        import pypdfium2 as pdfium
-    except ModuleNotFoundError as exc:
-        raise HTTPException(status_code=500, detail="pypdfium2 is required to render page images") from exc
+    with _pdf_render_lock:
+        if output_path.exists():
+            return output_path
+        try:
+            import pypdfium2 as pdfium
+        except ModuleNotFoundError as exc:
+            raise HTTPException(status_code=500, detail="pypdfium2 is required to render page images") from exc
 
-    pdf_path = source_pdf_path(source)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    pdf = pdfium.PdfDocument(str(pdf_path))
-    try:
-        if page > len(pdf):
-            raise HTTPException(status_code=404, detail=f"Page {page} is outside PDF page count {len(pdf)}")
-        bitmap = pdf[page - 1].render(scale=2.0)
-        image = bitmap.to_pil()
-        image.save(output_path)
-    finally:
-        pdf.close()
-    return output_path
+        pdf_path = source_pdf_path(source)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        pdf = pdfium.PdfDocument(str(pdf_path))
+        try:
+            if page > len(pdf):
+                raise HTTPException(status_code=404, detail=f"Page {page} is outside PDF page count {len(pdf)}")
+            bitmap = pdf[page - 1].render(scale=2.0)
+            image = bitmap.to_pil()
+            image.save(output_path)
+        finally:
+            pdf.close()
+        return output_path
 
 
 def rendered_rotated_page_image_path(source_id: str, page: int, rotation: int) -> Path:
@@ -537,23 +568,24 @@ def rendered_rotated_page_image_path(source_id: str, page: int, rotation: int) -
 
 
 def render_pdf_page_image_rotated(source: dict[str, Any], page: int, rotation: int = 0) -> Path:
-    original_path = render_pdf_page_image(source, page)
-    if not rotation:
-        return original_path
-    
-    rotated_path = rendered_rotated_page_image_path(source["source_id"], page, rotation)
-    if rotated_path.exists():
-        return rotated_path
+    with _pdf_render_lock:
+        original_path = render_pdf_page_image(source, page)
+        if not rotation:
+            return original_path
         
-    try:
-        from PIL import Image
-    except ModuleNotFoundError as exc:
-        raise HTTPException(status_code=500, detail="Pillow is required to rotate page images") from exc
+        rotated_path = rendered_rotated_page_image_path(source["source_id"], page, rotation)
+        if rotated_path.exists():
+            return rotated_path
+            
+        try:
+            from PIL import Image
+        except ModuleNotFoundError as exc:
+            raise HTTPException(status_code=500, detail="Pillow is required to rotate page images") from exc
 
-    with Image.open(original_path) as img:
-        rotated_img = img.rotate(-rotation, expand=True)
-        rotated_img.save(rotated_path)
-    return rotated_path
+        with Image.open(original_path) as img:
+            rotated_img = img.rotate(-rotation, expand=True)
+            rotated_img.save(rotated_path)
+        return rotated_path
 
 
 def crop_page_region(
@@ -614,8 +646,8 @@ def relative_existing_path(value: str, label: str) -> Path:
 
 
 def run_ndlocr_on_region(crop_path: Path, source_id: str, page: int, region_id: str) -> Path:
-    ocr_script = NDLOCR_VENDOR_DIR / "src" / "ocr.py"
-    if not ocr_script.exists():
+    ndlocr_src = NDLOCR_VENDOR_DIR / "src"
+    if not ndlocr_src.exists():
         raise HTTPException(status_code=500, detail=f"NDLOCR-Lite is missing at {NDLOCR_VENDOR_DIR}")
 
     work_dir = get_ocr_work_dir() / "region-ocr" / source_id / f"page_{page:04d}" / region_id
@@ -631,26 +663,48 @@ def run_ndlocr_on_region(crop_path: Path, source_id: str, page: int, region_id: 
     with Image.open(crop_path) as image:
         image.save(ocr_input_path)
 
-    command = [
-        sys.executable,
-        str(ocr_script),
-        "--sourcedir",
-        str(image_dir),
-        "--output",
-        str(output_dir),
-        "--json-only",
-    ]
+    # Dynamic import and execution
+    if str(ndlocr_src) not in sys.path:
+        sys.path.insert(0, str(ndlocr_src))
+    from ocr import process as run_ocr_process
+
+    import argparse
+    args = argparse.Namespace(
+        sourcedir=str(image_dir),
+        sourceimg=None,
+        output=str(output_dir),
+        viz=False,
+        det_weights=str(ndlocr_src / "model" / "deim-s-1024x1024.onnx"),
+        det_classes=str(ndlocr_src / "config" / "ndl.yaml"),
+        det_score_threshold=0.2,
+        det_conf_threshold=0.25,
+        det_iou_threshold=0.2,
+        simple_mode=False,
+        rec_weights30=str(ndlocr_src / "model" / "parseq-ndl-24x256-30-tiny-189epoch-tegaki3-r8data-202604.onnx"),
+        rec_weights50=str(ndlocr_src / "model" / "parseq-ndl-24x384-50-tiny-300epoch-tegaki3-r8data-202604.onnx"),
+        rec_weights=str(ndlocr_src / "model" / "parseq-ndl-24x768-100-tiny-153epoch-tegaki3-r8data-202604.onnx"),
+        rec_classes=str(ndlocr_src / "config" / "NDLmoji.yaml"),
+        device="cpu",
+        enable_tcy=False,
+        json_only=True
+    )
+
+    # Register activity
     try:
-        subprocess.run(
-            command,
-            check=True,
-            cwd=str(NDLOCR_VENDOR_DIR / "src"),
-            text=True,
-            capture_output=True,
-        )
-    except subprocess.CalledProcessError as exc:
-        detail = exc.stderr.strip() or exc.stdout.strip() or "NDLOCR-Lite failed on selected region"
-        raise HTTPException(status_code=500, detail=detail) from exc
+        import asyncio
+        from backend.app.core.providers import _register_ocr_activity
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(_register_ocr_activity())
+        except RuntimeError:
+            pass
+    except Exception:
+        pass
+
+    try:
+        run_ocr_process(args)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"NDLOCR-Lite failed: {exc}") from exc
 
     expected = output_dir / "region.json"
     if expected.exists():
@@ -908,18 +962,38 @@ def validate_extraction_candidate(source_id: str, artifact: dict[str, Any]) -> N
 
 
 def run_workspace_script(script_name: str) -> None:
-    env = os.environ.copy()
-    env["KOSHU_PROJECT"] = ACTIVE_PROJECT_ID
-    result = subprocess.run(
-        [sys.executable, str(ROOT / "scripts" / script_name)],
-        cwd=str(ROOT),
-        text=True,
-        capture_output=True,
-        env=env,
-    )
-    if result.returncode != 0:
-        detail = result.stderr.strip() or result.stdout.strip() or f"{script_name} failed"
-        raise HTTPException(status_code=500, detail=detail)
+    # Set the environment variable so the script picks it up in the same process
+    os.environ["KOSHU_PROJECT"] = ACTIVE_PROJECT_ID
+    
+    script_path = BUNDLE_ROOT / "scripts" / script_name
+    if not script_path.exists():
+        raise HTTPException(status_code=500, detail=f"Script {script_name} not found")
+        
+    try:
+        import importlib.util
+        # Dynamically load the script as a module
+        spec = importlib.util.spec_from_file_location(script_name.replace(".py", ""), str(script_path))
+        if spec is None or spec.loader is None:
+            raise RuntimeError(f"Could not load spec for {script_name}")
+        module = importlib.util.module_from_spec(spec)
+        
+        # Add scripts directory to path if not already there
+        scripts_dir = str(BUNDLE_ROOT / "scripts")
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+            
+        spec.loader.exec_module(module)
+        
+        # If it has a main entry point, run it
+        if hasattr(module, "main"):
+            ret = module.main()
+            if ret is not None and ret != 0:
+                raise RuntimeError(f"Script returned non-zero exit code: {ret}")
+                
+    except Exception as exc:
+        import traceback
+        detail = f"{script_name} failed: {exc}\n{traceback.format_exc()}"
+        raise HTTPException(status_code=500, detail=detail) from exc
 
 
 def reading_extraction_artifact(source_id: str) -> dict[str, Any]:
@@ -983,8 +1057,9 @@ def reading_extraction_artifact(source_id: str) -> dict[str, Any]:
 def save_reading_extraction_artifact(source_id: str, artifact: dict[str, Any]) -> None:
     validate_extraction_candidate(source_id, artifact)
     write_json(extraction_artifact_path(source_id), artifact)
-    run_workspace_script("validate_extractions.py")
-    run_workspace_script("build_database.py")
+    # run_workspace_script("validate_extractions.py")
+    # run_workspace_script("build_database.py")
+    pass
 
 
 def include_page_in_scope(artifact: dict[str, Any], page: int) -> None:
@@ -2453,13 +2528,40 @@ def write_temporary_text_ocr_records(
     return records
 
 
-async def run_batch_ocr_page(run_id: str, source: dict[str, Any], page: int, engine_id: str) -> dict[str, Any]:
+async def run_batch_ocr_page(run_id: str, source: dict[str, Any], page: int, engine_id: str, extra_settings: dict[str, Any] | None = None) -> dict[str, Any]:
     engines = get_available_engines()
     if engine_id not in engines:
         raise HTTPException(status_code=400, detail=f"OCR engine is not available: {engine_id}")
     page_image = render_pdf_page_image(source, page)
+    
+    is_cloud = (engine_id == "paddleocr" or engine_id.startswith("vision_llm_") or engine_id == "mineru")
+    temp_path = None
+    if is_cloud:
+        try:
+            import tempfile
+            from PIL import Image
+            # Create a temporary file path
+            temp_file = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
+            temp_path = Path(temp_file.name)
+            temp_file.close()
+            
+            with Image.open(page_image) as img:
+                gray_img = img.convert("L")
+                gray_img.thumbnail((1500, 1500), Image.Resampling.LANCZOS)
+                gray_img.save(temp_path, "JPEG", quality=75)
+            
+            page_image_to_use = temp_path
+        except Exception as e:
+            print(f"Warning: Failed to compress page image for cloud OCR: {e}")
+            page_image_to_use = page_image
+    else:
+        page_image_to_use = page_image
+
     try:
-        result = await engines[engine_id].run_ocr(page_image, {"source_id": source["source_id"], "page": page, "region_id": "full_page"})
+        ocr_settings = {"source_id": source["source_id"], "page": page, "region_id": "full_page"}
+        if extra_settings:
+            ocr_settings.update(extra_settings)
+        result = await engines[engine_id].run_ocr(page_image_to_use, ocr_settings)
     except Exception as exc:
         return {
             "ocr_layer": "batch",
@@ -2468,6 +2570,12 @@ async def run_batch_ocr_page(run_id: str, source: dict[str, Any], page: int, eng
             "ocr_text": "",
             "ocr_status": f"ocr_failed: {exc}",
         }
+    finally:
+        if temp_path and temp_path.exists():
+            try:
+                temp_path.unlink()
+            except Exception:
+                pass
     page_json = result.get("page_json") or {}
     text = result.get("text") or flatten_ocr_text(page_json)
     page_json.setdefault("batch_ocr", {})
@@ -2959,14 +3067,10 @@ def sync_batch_ocr_to_project(source_id: str) -> None:
         except Exception:
             return
             
-        registered_pages: set[int] = set()
-        for layer in ("manual", "raw"):
-            manifest_info = ocr_manifest_for_layer(source_id, layer)
-            if manifest_info:
-                manifest, _ = manifest_info
-                registered_pages.update(int(p) for p in manifest.get("pages", []) if isinstance(p, (int, str)))
-
-        run_dirs = sorted(batch_dir.glob("run_ext_*"))
+        run_dirs = sorted(
+            [d for d in batch_dir.iterdir() if d.is_dir() and (d.name.startswith("run_ext_") or d.name.startswith("bio_"))],
+            key=lambda d: d.name
+        )
         if not run_dirs:
             return
 
@@ -2990,11 +3094,18 @@ def sync_batch_ocr_to_project(source_id: str) -> None:
                     continue
                 page = int(match.group(1))
                 
-                if page not in registered_pages:
+                raw_page_path = get_ocr_raw_dir() / source_id / "pages" / f"page_{page:04d}.json"
+                should_sync = not raw_page_path.exists()
+                if not should_sync:
+                    try:
+                        should_sync = ocr_file.stat().st_mtime > raw_page_path.stat().st_mtime
+                    except Exception:
+                        pass
+                
+                if should_sync:
                     try:
                         page_json = load_json(ocr_file)
                         register_raw_ocr_for_page(source, page, page_json, engine)
-                        registered_pages.add(page)
                     except Exception as e:
                         print(f"Error auto-syncing page {page} from run {run_dir.name}: {e}")
     except Exception as e:
@@ -3020,39 +3131,25 @@ def patch_glirel_compatibility():
 
 
 def ensure_nlp_dependencies(run_id: str = None, manifest: dict = None):
-    import subprocess
-    import sys
-    script_path = ROOT / "scripts" / "setup_models.py"
-    if not script_path.exists():
-        raise RuntimeError("setup_models.py script not found")
-        
-    command = [sys.executable, str(script_path)]
     try:
-        process = subprocess.Popen(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1
-        )
+        from huggingface_hub import snapshot_download
         
-        while True:
-            line = process.stdout.readline()
-            if not line:
-                break
-            line_str = line.strip()
-            print(f"[setup_models] {line_str}")
+        models_to_download = [
+            ("urchade/gliner_multi-v2.1", "GLiNER"),
+            ("jackboyla/glirel-large-v0", "GLiREL")
+        ]
+        
+        for repo_id, label in models_to_download:
+            print(f"[setup_models] Ensuring model weights for {label} ({repo_id})...")
             if run_id and manifest:
-                if any(x in line_str for x in ["Installing", "Downloading", "Ensuring"]):
-                    manifest["status"] = line_str
-                    write_json(batch_run_path(run_id), manifest)
-                    
-        process.wait()
-        if process.returncode != 0:
-            raise RuntimeError(f"setup_models.py failed with exit code {process.returncode}")
+                manifest["status"] = f"Downloading model weights for {label}..."
+                write_json(batch_run_path(run_id), manifest)
+            
+            # Download/verify using the huggingface_hub client directly
+            snapshot_download(repo_id=repo_id)
             
     except Exception as exc:
-        raise RuntimeError(f"Failed to execute setup_models.py: {exc}")
+        raise RuntimeError(f"Failed to download NLP model dependencies: {exc}")
 
 
 def ensure_glirel_config_json_exists():
@@ -3078,6 +3175,13 @@ def ensure_glirel_config_json_exists():
         pass
 
 
+cancelled_run_ids = set()
+
+def cancel_batch_run(run_id: str):
+    cancelled_run_ids.add(run_id)
+
+
+
 async def run_batch_nlp_extraction(
     run_id: str,
     source_id: str,
@@ -3086,7 +3190,8 @@ async def run_batch_nlp_extraction(
     entity_labels: list[str],
     relation_labels: list[str],
     slm_prompt: str,
-    llm_prompt: str
+    llm_prompt: str,
+    ocr_settings: dict[str, Any] | None = None
 ):
     source = source_by_id(source_id)
     pages = biography_source_pages(source)
@@ -3175,25 +3280,135 @@ async def run_batch_nlp_extraction(
             write_json(batch_run_path(run_id), manifest)
             return
 
+    ocr_results_by_page = {}
+    if ocr_engine == "mineru":
+        manifest["status"] = "Preparing MinerU Cloud OCR for PDF..."
+        write_json(batch_run_path(run_id), manifest)
+        
+        engines = get_available_engines()
+        mineru_eng = engines.get("mineru")
+        if mineru_eng:
+            try:
+                pdf_path = source_pdf_path(source)
+                
+                async def ocr_progress(status_text):
+                    manifest["status"] = status_text
+                    write_json(batch_run_path(run_id), manifest)
+                    
+                ocr_results_by_page = await mineru_eng.run_ocr_pdf(pdf_path, ocr_settings or {}, progress_callback=ocr_progress)
+            except Exception as e:
+                manifest["status"] = f"failed: MinerU Cloud OCR failed: {e}"
+                write_json(batch_run_path(run_id), manifest)
+                return
+        else:
+            manifest["status"] = "failed: MinerU OCR engine not available."
+            write_json(batch_run_path(run_id), manifest)
+            return
+
+    phase1_ocr_results = {}
+    is_cloud_page_ocr = (ocr_engine == "paddleocr" or ocr_engine.startswith("vision_llm_"))
+    if is_cloud_page_ocr:
+        manifest["status"] = f"Preparing concurrent cloud OCR for {len(pages)} pages..."
+        write_json(batch_run_path(run_id), manifest)
+        
+        sem = asyncio.Semaphore(3)
+        completed_pages = 0
+        
+        async def process_single_page_ocr(page):
+            if run_id in cancelled_run_ids:
+                return
+            nonlocal completed_pages
+            async with sem:
+                if run_id in cancelled_run_ids:
+                    return
+                print(f"[Batch OCR] Starting cloud OCR on page {page} with {ocr_engine}...")
+                ocr_res = None
+                for attempt in range(1, 4):
+                    try:
+                        ocr_res = await run_batch_ocr_page(run_id, source, page, ocr_engine, ocr_settings)
+                        if "ocr_failed" not in ocr_res.get("ocr_status", ""):
+                            print(f"[Batch OCR] Page {page} completed successfully on attempt {attempt}.")
+                            break
+                    except Exception as e:
+                        print(f"[Batch OCR] Page {page} attempt {attempt} failed: {e}")
+                        if attempt == 3:
+                            ocr_res = {
+                                "ocr_layer": "batch",
+                                "ocr_page_json": "",
+                                "ocr_manifest": "",
+                                "ocr_text": "",
+                                "ocr_status": f"ocr_failed: {e}",
+                            }
+                            break
+                        await asyncio.sleep(attempt * 2.0)
+                
+                if ocr_res:
+                    phase1_ocr_results[page] = ocr_res
+                
+                completed_pages += 1
+                print(f"[Batch OCR] Cloud OCR Progress: {completed_pages}/{len(pages)} pages done.")
+                manifest["status"] = f"Running cloud OCR... ({completed_pages}/{len(pages)} pages done)"
+                write_json(batch_run_path(run_id), manifest)
+
+        await asyncio.gather(*(process_single_page_ocr(page) for page in pages))
+
     total_pages = len(pages)
     for idx, page in enumerate(pages, 1):
-        ocr = best_ocr_for_page(source_id, page)
-        if ocr.get("ocr_status") == "missing" or ocr.get("ocr_layer") == "none":
-            if ocr_engine == "none":
-                create_blank_batch_packet(run_id, source, page, ocr)
-                continue
-            manifest["status"] = f"Running OCR on page {page} ({idx}/{total_pages})..."
+        if run_id in cancelled_run_ids:
+            manifest["status"] = "stopped"
             write_json(batch_run_path(run_id), manifest)
-            try:
-                ocr = await run_batch_ocr_page(run_id, source, page, ocr_engine)
-            except Exception:
-                continue
+            print(f"[Batch OCR] Run {run_id} stopped by user.")
+            return
+        if ocr_engine == "mineru" and page in ocr_results_by_page:
+            page_data = ocr_results_by_page[page]
+            page_json = page_data.get("page_json") or {}
+            text = page_data.get("text") or ""
+            
+            page_json.setdefault("batch_ocr", {})
+            page_json["batch_ocr"].update({
+                "run_id": run_id,
+                "source_id": source_id,
+                "page": page,
+                "engine": ocr_engine,
+                "status": "candidate",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+            
+            output_path = get_batch_review_dir() / run_id / "sources" / source_id / "ocr" / f"page_{page:04d}.json"
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            write_json(output_path, page_json)
+            register_raw_ocr_for_page(source, page, page_json, ocr_engine)
+            
+            ocr = {
+                "ocr_layer": "batch",
+                "ocr_page_json": to_project_relative_path(output_path),
+                "ocr_manifest": "",
+                "ocr_text": text,
+                "ocr_status": "needs_ocr_review" if len(text.strip()) < 20 else "loaded",
+            }
+        else:
+            if is_cloud_page_ocr and page in phase1_ocr_results:
+                ocr = phase1_ocr_results[page]
+            else:
+                ocr = best_ocr_for_page(source_id, page)
+                should_run_ocr = (ocr_engine != "none" and ocr.get("ocr_layer") != "corrected") or (ocr.get("ocr_status") == "missing" or ocr.get("ocr_layer") == "none")
+                if should_run_ocr:
+                    if ocr_engine == "none":
+                        create_blank_batch_packet(run_id, source, page, ocr)
+                        continue
+                    manifest["status"] = f"Running OCR on page {page} ({idx}/{total_pages})..."
+                    write_json(batch_run_path(run_id), manifest)
+                    try:
+                        ocr = await run_batch_ocr_page(run_id, source, page, ocr_engine, ocr_settings)
+                    except Exception:
+                        continue
                 
         text = ocr.get("ocr_text", "").strip()
         if not text or nlp_method == "none":
             create_blank_batch_packet(run_id, source, page, ocr)
             continue
             
+        print(f"[Batch OCR] Running NLP text processing on page {page} ({idx}/{total_pages})...")
         manifest["status"] = f"Text processing on page {page} ({idx}/{total_pages})..."
         write_json(batch_run_path(run_id), manifest)
         
