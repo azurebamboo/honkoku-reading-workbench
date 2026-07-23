@@ -946,16 +946,36 @@ function Workbench() {
     setActiveTab("reading");
   }
 
-  async function importReadingPdf(file) {
-    if (!file) return "";
-    const response = await fetch(`${API_BASE}/api/v1/reading/import-pdf`, {
-      method: "POST",
-      headers: {
-        "Content-Type": file.name.toLowerCase().endsWith('.zip') ? "application/zip" : "application/pdf",
-        "X-Filename": encodeURIComponent(file.name),
-      },
-      body: file,
+  async function importReadingFiles(files: any, folderName = "") {
+    if (!files) return "";
+    
+    let fileArray: File[] = [];
+    if (files instanceof File) {
+      fileArray = [files];
+    } else if (files instanceof FileList) {
+      fileArray = Array.from(files);
+    } else if (Array.isArray(files)) {
+      fileArray = files;
+    } else {
+      fileArray = [files];
+    }
+    
+    if (fileArray.length === 0) return "";
+
+    const formData = new FormData();
+    fileArray.forEach((file) => {
+      formData.append("files", file);
     });
+
+    if (folderName) {
+      formData.append("source_title", folderName);
+    }
+
+    const response = await fetch(`${API_BASE}/api/v1/reading/import`, {
+      method: "POST",
+      body: formData,
+    });
+
     if (!response.ok) {
       let message = await response.text();
       try {
@@ -977,9 +997,9 @@ function Workbench() {
     return `${result.message} Source ID: ${source.source_id}.${pages}${checksum}`;
   }
 
-  const importReadingPdfRef = useRef(importReadingPdf);
+  const importReadingFilesRef = useRef(importReadingFiles);
   useEffect(() => {
-    importReadingPdfRef.current = importReadingPdf;
+    importReadingFilesRef.current = importReadingFiles;
   });
 
   useEffect(() => {
@@ -999,18 +1019,10 @@ function Workbench() {
 
     const handleDragLeave = (e: DragEvent) => {
       e.preventDefault();
-      const types = e.dataTransfer?.types;
-      const isFileDrag = types && (
-        Array.from(types).includes("Files") || 
-        Array.from(types).includes("application/x-moz-file")
-      );
-      
-      if (isFileDrag) {
-        dragCounter.current--;
-        if (dragCounter.current <= 0) {
-          dragCounter.current = 0;
-          setIsDragging(false);
-        }
+      dragCounter.current--;
+      if (dragCounter.current <= 0) {
+        dragCounter.current = 0;
+        setIsDragging(false);
       }
     };
 
@@ -1024,18 +1036,40 @@ function Workbench() {
       dragCounter.current = 0;
 
       if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-        const file = e.dataTransfer.files[0];
-        const lowerName = file.name.toLowerCase();
-        if (lowerName.endsWith(".pdf") || lowerName.endsWith(".zip")) {
+        const files = Array.from(e.dataTransfer.files);
+        const hasPdfOrZip = files.some(file => {
+          const lowerName = file.name.toLowerCase();
+          return lowerName.endsWith(".pdf") || lowerName.endsWith(".zip");
+        });
+        const allImages = files.every(file => {
+          const lowerName = file.name.toLowerCase();
+          return lowerName.endsWith(".png") || lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg") || lowerName.endsWith(".tiff") || lowerName.endsWith(".bmp") || lowerName.endsWith(".webp");
+        });
+
+        if (hasPdfOrZip) {
+          const file = files.find(file => {
+            const lowerName = file.name.toLowerCase();
+            return lowerName.endsWith(".pdf") || lowerName.endsWith(".zip");
+          });
+          if (file) {
+            try {
+              setActiveTab("reading");
+              const msg = await importReadingFilesRef.current(file);
+              alert(msg);
+            } catch (err: any) {
+              alert("Failed to import file: " + err.message);
+            }
+          }
+        } else if (allImages) {
           try {
             setActiveTab("reading");
-            const msg = await importReadingPdfRef.current(file);
+            const msg = await importReadingFilesRef.current(files);
             alert(msg);
           } catch (err: any) {
-            alert("Failed to import file: " + err.message);
+            alert("Failed to import images: " + err.message);
           }
         } else {
-          alert("Only PDF or ZIP files are supported for import.");
+          alert("Only PDF, ZIP, or image files are supported for import.");
         }
       }
     };
@@ -1420,7 +1454,7 @@ function Workbench() {
             onTextChange={setReadingText}
             onSaveOcr={saveOcrReview}
             onSaveEvidence={saveDeskEvidence}
-            onImportPdf={importReadingPdf}
+            onImportFiles={importReadingFiles}
             onRenameSource={handleOpenSourceMetadata}
             onDeleteSource={handleDeleteSource}
             onReloadPage={() => loadReadingPage(selectedReadingSourceId, selectedReadingPage)}
@@ -2237,7 +2271,7 @@ function ReadingDesk({
   onTextChange,
   onSaveOcr,
   onSaveEvidence,
-  onImportPdf,
+  onImportFiles,
   onRenameSource,
   onDeleteSource,
   onReloadPage,
@@ -2695,14 +2729,34 @@ function ReadingDesk({
     return escapedText;
   };
 
-  const importPdf = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const importFiles = async (e) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
     try {
-      const msg = await onImportPdf(file);
+      const msg = await onImportFiles(files);
       alert(msg);
-    } catch (err) {
-      alert("Failed to import PDF: " + err.message);
+    } catch (err: any) {
+      alert("Failed to import files: " + err.message);
+    }
+  };
+
+  const importFolder = async (e) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    let folderName = "";
+    if (files[0] && files[0].webkitRelativePath) {
+      const parts = files[0].webkitRelativePath.split('/');
+      if (parts.length > 1) {
+        folderName = parts[0];
+      }
+    }
+
+    try {
+      const msg = await onImportFiles(files, folderName);
+      alert(msg);
+    } catch (err: any) {
+      alert("Failed to import folder: " + err.message);
     }
   };
 
@@ -2729,17 +2783,38 @@ function ReadingDesk({
     setIsLocalDragging(false);
 
     if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const file = e.dataTransfer.files[0];
-      const lowerName = file.name.toLowerCase();
-      if (lowerName.endsWith(".pdf") || lowerName.endsWith(".zip")) {
+      const files = Array.from(e.dataTransfer.files);
+      const hasPdfOrZip = files.some(file => {
+        const lowerName = file.name.toLowerCase();
+        return lowerName.endsWith(".pdf") || lowerName.endsWith(".zip");
+      });
+      const allImages = files.every(file => {
+        const lowerName = file.name.toLowerCase();
+        return lowerName.endsWith(".png") || lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg") || lowerName.endsWith(".tiff") || lowerName.endsWith(".bmp") || lowerName.endsWith(".webp");
+      });
+
+      if (hasPdfOrZip) {
+        const file = files.find(file => {
+          const lowerName = file.name.toLowerCase();
+          return lowerName.endsWith(".pdf") || lowerName.endsWith(".zip");
+        });
+        if (file) {
+          try {
+            const msg = await onImportFiles(file);
+            alert(msg);
+          } catch (err: any) {
+            alert("Failed to import file: " + err.message);
+          }
+        }
+      } else if (allImages) {
         try {
-          const msg = await onImportPdf(file);
+          const msg = await onImportFiles(files);
           alert(msg);
         } catch (err: any) {
-          alert("Failed to import file: " + err.message);
+          alert("Failed to import images: " + err.message);
         }
       } else {
-        alert("Only PDF or ZIP files are supported for import.");
+        alert("Only PDF, ZIP, or image files are supported for import.");
       }
     }
   };
@@ -3213,11 +3288,29 @@ function ReadingDesk({
             onDragEnter={handleLocalDragEnter}
             onDragLeave={handleLocalDragLeave}
             onDrop={handleLocalDrop}
-            title="Import or drag-and-drop a PDF/ZIP file here"
+            title="Import or drag-and-drop PDF, ZIP, or image files here"
           >
             <Upload size={14} /> 
-            <span>{isLocalDragging ? 'Drop file here!' : 'Import PDF/ZIP'}</span>
-            <input type="file" accept="application/pdf,.pdf,application/zip,.zip" onChange={importPdf} />
+            <span>{isLocalDragging ? 'Drop here!' : 'Import File(s)'}</span>
+            <input 
+              type="file" 
+              accept="application/pdf,.pdf,application/zip,.zip,image/*,.png,.jpg,.jpeg,.tiff,.bmp,.webp" 
+              multiple 
+              onChange={importFiles} 
+            />
+          </label>
+          <label 
+            className="fileImportDropZone"
+            title="Import a folder containing image files"
+          >
+            <Upload size={14} /> 
+            <span>Import Folder</span>
+            <input 
+              type="file" 
+              {...({ webkitdirectory: "", directory: "" } as any)} 
+              multiple 
+              onChange={importFolder} 
+            />
           </label>
           {sourceReady && pageReady && (
             <>

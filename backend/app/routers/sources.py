@@ -2,12 +2,63 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, File, Form, UploadFile
 from fastapi.responses import FileResponse
+import io
+import re
+import zipfile
 
 from backend.app.services.workbench import *
 
 router = APIRouter()
+
+def natural_sort_key(s: str) -> list[int | str]:
+    return [int(text) if text.isdigit() else text.lower() for text in re.split(r"(\d+)", s)]
+
+def process_single_image_to_pdf(filename: str, content: bytes) -> tuple[str, bytes]:
+    from PIL import Image
+    try:
+        img = Image.open(io.BytesIO(content)).convert("RGB")
+        pdf_bytes = io.BytesIO()
+        img.save(pdf_bytes, format="PDF")
+        pdf_data = pdf_bytes.getvalue()
+        new_filename = Path(filename).stem + ".pdf"
+        return new_filename, pdf_data
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to read image {filename}: {e}")
+
+def process_zip_images_to_pdf(filename: str, content: bytes) -> tuple[str, bytes]:
+    try:
+        with zipfile.ZipFile(io.BytesIO(content)) as z:
+            image_infos = [
+                info for info in z.infolist() 
+                if info.filename.lower().endswith((".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".webp"))
+            ]
+            if not image_infos:
+                raise HTTPException(status_code=400, detail="No images found in zip")
+            
+            image_infos.sort(key=lambda info: natural_sort_key(info.filename))
+            
+            from PIL import Image
+            images = []
+            for info in image_infos:
+                img_data = z.read(info)
+                try:
+                    img = Image.open(io.BytesIO(img_data)).convert("RGB")
+                    images.append(img)
+                except Exception:
+                    continue
+            
+            if not images:
+                raise HTTPException(status_code=400, detail="No valid images could be read from zip")
+                
+            pdf_bytes = io.BytesIO()
+            images[0].save(pdf_bytes, format="PDF", save_all=True, append_images=images[1:])
+            pdf_data = pdf_bytes.getvalue()
+            new_filename = Path(filename).stem + ".pdf"
+            return new_filename, pdf_data
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=400, detail="Invalid zip file")
 
 @router.get("/api/v1/ocr/engines")
 def list_ocr_engines() -> list[dict[str, Any]]:
@@ -83,35 +134,116 @@ def reading_sources(
     return sources
 
 
+@router.post("/api/v1/reading/import")
+async def import_reading_files(
+    files: list[UploadFile] = File(...),
+    source_title: str | None = Form(None),
+) -> dict[str, Any]:
+    if not files:
+        raise HTTPException(status_code=400, detail="No files uploaded")
+        
+    if len(files) == 1:
+        file = files[0]
+        filename = file.filename or "imported"
+        content = await file.read()
+        lower_name = filename.lower()
+        
+        if lower_name.endswith(".pdf"):
+            result = upsert_imported_source(filename, content)
+        elif lower_name.endswith(".zip"):
+            pdf_filename, pdf_data = process_zip_images_to_pdf(filename, content)
+            result = upsert_imported_source(pdf_filename, pdf_data)
+        elif lower_name.endswith((".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".webp")):
+            pdf_filename, pdf_data = process_single_image_to_pdf(filename, content)
+            result = upsert_imported_source(pdf_filename, pdf_data)
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported file format")
+            
+    else:
+        # Multiple files (or folder upload)
+        image_files = []
+        for file in files:
+            filename = file.filename or ""
+            lower_name = filename.lower()
+            if lower_name.endswith((".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".webp")):
+                image_files.append(file)
+            elif lower_name.endswith((".pdf", ".zip")):
+                raise HTTPException(status_code=400, detail="Cannot import multiple PDFs or ZIPs together")
+                
+        if not image_files:
+            raise HTTPException(status_code=400, detail="No valid image files found to import")
+            
+        # Sort naturally by the filename/path
+        image_files.sort(key=lambda f: natural_sort_key(f.filename or ""))
+        
+        from PIL import Image
+        images = []
+        for file in image_files:
+            img_content = await file.read()
+            try:
+                img = Image.open(io.BytesIO(img_content)).convert("RGB")
+                images.append(img)
+            except Exception:
+                continue
+                
+        if not images:
+            raise HTTPException(status_code=400, detail="No valid images could be read")
+            
+        # Determine the target PDF name
+        if source_title:
+            pdf_filename = source_title
+            if not pdf_filename.lower().endswith(".pdf"):
+                pdf_filename += ".pdf"
+        else:
+            # Try to infer from first file's webkitRelativePath/filename
+            first_path = image_files[0].filename or ""
+            path_parts = first_path.replace("\\", "/").split("/")
+            if len(path_parts) > 1:
+                pdf_filename = path_parts[0] + ".pdf"
+            else:
+                pdf_filename = "imported_images.pdf"
+                
+        # Convert list of images to a single PDF
+        pdf_bytes = io.BytesIO()
+        images[0].save(pdf_bytes, format="PDF", save_all=True, append_images=images[1:])
+        pdf_data = pdf_bytes.getvalue()
+        
+        result = upsert_imported_source(pdf_filename, pdf_data)
+
+    source = result["source"]
+    diagnostics = pdf_diagnostics(source_by_id(source["source_id"]), page=1, render=True)
+    source["pdf_status"] = diagnostics
+    render_message = "Page 1 rendered successfully." if diagnostics.get("renderable") else diagnostics.get("diagnostic_error", "Page 1 could not render.")
+    return {
+        "ok": True,
+        "created": result["created"],
+        "source": source,
+        "diagnostics": diagnostics,
+        "message": (
+            f"Imported source successfully. {render_message}"
+            if result["created"]
+            else f"Source was already in the catalog. {render_message}"
+        ),
+    }
+
+
 @router.post("/api/v1/reading/import-pdf")
 async def import_reading_pdf(request: Request) -> dict[str, Any]:
     filename = unquote(request.headers.get("x-filename") or "imported.pdf")
     data = await request.body()
     
-    if filename.lower().endswith(".zip"):
-        try:
-            with zipfile.ZipFile(io.BytesIO(data)) as z:
-                image_infos = [info for info in z.infolist() if info.filename.lower().endswith((".png", ".jpg", ".jpeg"))]
-                if not image_infos:
-                    raise HTTPException(status_code=400, detail="No images found in zip")
-                
-                image_infos.sort(key=lambda info: info.date_time)
-                
-                from PIL import Image
-                images = []
-                for info in image_infos:
-                    img_data = z.read(info)
-                    img = Image.open(io.BytesIO(img_data)).convert("RGB")
-                    images.append(img)
-                
-                pdf_bytes = io.BytesIO()
-                images[0].save(pdf_bytes, format="PDF", save_all=True, append_images=images[1:])
-                data = pdf_bytes.getvalue()
-                filename = filename[:-4] + ".pdf"
-        except zipfile.BadZipFile:
-            raise HTTPException(status_code=400, detail="Invalid zip file")
+    lower_name = filename.lower()
+    if lower_name.endswith(".pdf"):
+        result = upsert_imported_source(filename, data)
+    elif lower_name.endswith(".zip"):
+        pdf_filename, pdf_data = process_zip_images_to_pdf(filename, data)
+        result = upsert_imported_source(pdf_filename, pdf_data)
+    elif lower_name.endswith((".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".webp")):
+        pdf_filename, pdf_data = process_single_image_to_pdf(filename, data)
+        result = upsert_imported_source(pdf_filename, pdf_data)
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported file format")
 
-    result = upsert_imported_source(filename, data)
     source = result["source"]
     diagnostics = pdf_diagnostics(source_by_id(source["source_id"]), page=1, render=True)
     source["pdf_status"] = diagnostics
