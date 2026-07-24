@@ -782,20 +782,39 @@ def require_existing_ocr_path(path: str, label: str = "OCR provenance path") -> 
 
 
 def flatten_ocr_text(page_json: dict[str, Any]) -> str:
+    if not isinstance(page_json, dict):
+        return ""
+    # Direct top-level string fields
+    for direct_key in ("text", "markdown", "full_text", "ocr_text", "raw_text"):
+        val = page_json.get(direct_key)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+
     lines: list[str] = []
-    for block in page_json.get("contents", []):
-        if isinstance(block, dict):
-            text = block.get("text")
-            if isinstance(text, str):
-                lines.append(text.strip())
+    # Block list containers
+    container_keys = ("contents", "paragraphs", "blocks", "lines", "para_blocks", "pdf_info")
+    for c_key in container_keys:
+        blocks = page_json.get(c_key, [])
+        if not isinstance(blocks, list):
             continue
-        if isinstance(block, list):
-            for item in block:
-                if isinstance(item, dict):
-                    text = item.get("text")
-                    if isinstance(text, str):
-                        lines.append(text.strip())
+        for block in blocks:
+            if isinstance(block, str) and block.strip():
+                lines.append(block.strip())
+            elif isinstance(block, dict):
+                text = block.get("text") or block.get("content") or block.get("markdown")
+                if isinstance(text, str) and text.strip():
+                    lines.append(text.strip())
+            elif isinstance(block, list):
+                for item in block:
+                    if isinstance(item, str) and item.strip():
+                        lines.append(item.strip())
+                    elif isinstance(item, dict):
+                        text = item.get("text") or item.get("content") or item.get("markdown")
+                        if isinstance(text, str) and text.strip():
+                            lines.append(text.strip())
+
     return "\n".join(lines)
+
 
 
 def draft_table_rows_from_text(text: str) -> list[dict[str, Any]]:

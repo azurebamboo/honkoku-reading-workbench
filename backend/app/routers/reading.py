@@ -765,6 +765,7 @@ def reading_source_export_text(source_id: str) -> dict[str, Any]:
     
     for page in range(1, page_count + 1):
         raw_text = ""
+        raw_page_json = {}
         if preferred is not None:
             ocr_layer, manifest, manifest_path = preferred
             raw_page_json_path = page_json_path_for(manifest, page)
@@ -776,12 +777,25 @@ def reading_source_export_text(source_id: str) -> dict[str, Any]:
                     pass
                     
         corrected_text = ""
+        corrected_page_json = {}
         if corrected_info:
             corrected_manifest = corrected_info[0]
             corrected_page_json_path = page_json_path_for(corrected_manifest, page)
             if corrected_page_json_path:
                 try:
-                    corrected_text = flatten_ocr_text(load_json(resolve_project_relative_path(corrected_page_json_path)))
+                    corrected_page_json = load_json(resolve_project_relative_path(corrected_page_json_path))
+                    corrected_text = flatten_ocr_text(corrected_page_json)
+                except Exception:
+                    pass
+
+        # Fallback to regional OCR if neither raw nor corrected page JSON text exists
+        if not corrected_text and not raw_text:
+            fallback_path = get_ocr_regions_dir() / source_id / "pages" / f"page_{page:04d}" / "full_page.json"
+            if fallback_path.exists():
+                try:
+                    fallback_json = load_json(fallback_path)
+                    raw_text = flatten_ocr_text(fallback_json)
+                    raw_page_json = fallback_json
                 except Exception:
                     pass
                     
@@ -802,6 +816,7 @@ def reading_source_export_text(source_id: str) -> dict[str, Any]:
             "page": page,
             "text": effective_text
         })
+
         
     plain_text = ""
     for p in pages_text:
@@ -1380,8 +1395,11 @@ async def save_reading_evidence(source_id: str, page: int, request: Request) -> 
 
 @router.get("/api/v1/reading/search-ocr")
 def search_ocr_keywords(q: str = Query(min_length=1)) -> list[dict[str, Any]]:
-    query = q.lower()
+    query = q.lower().strip()
+    if not query:
+        return []
     results = []
+    seen_keys = set()
     
     # Get all sources from JSON catalog to match titles
     try:
@@ -1389,61 +1407,100 @@ def search_ocr_keywords(q: str = Query(min_length=1)) -> list[dict[str, Any]]:
         source_map = {s["source_id"]: (s.get("title_original") or s.get("title") or s["source_id"]) for s in sources_list}
     except Exception:
         source_map = {}
-    
-    # corrected first, then raw
-    corrected_dir = get_ocr_corrected_dir()
-    raw_dir = get_ocr_raw_dir()
-    
-    pages_to_search = {}
-    
-    if corrected_dir.exists():
-        for source_path in corrected_dir.iterdir():
-            if source_path.is_dir():
-                source_id = source_path.name
-                pages_dir = source_path / "pages"
-                if pages_dir.exists():
-                    for page_file in pages_dir.glob("page_*.json"):
-                        try:
-                            page_num = int(page_file.stem.split("_")[1])
-                            pages_to_search[(source_id, page_num)] = page_file
-                        except Exception:
-                            continue
-                            
-    if raw_dir.exists():
-        for source_path in raw_dir.iterdir():
-            if source_path.is_dir():
-                source_id = source_path.name
-                pages_dir = source_path / "pages"
-                if pages_dir.exists():
-                    for page_file in pages_dir.glob("page_*.json"):
-                        try:
-                            page_num = int(page_file.stem.split("_")[1])
-                            key = (source_id, page_num)
-                            if key not in pages_to_search:
-                                pages_to_search[key] = page_file
-                        except Exception:
-                            continue
-                            
-    for (source_id, page_num), file_path in pages_to_search.items():
-        try:
-            page_json = load_json(file_path)
-            text = flatten_ocr_text(page_json)
-            if query in text.lower():
-                idx = text.lower().find(query)
-                start = max(0, idx - 40)
-                end = min(len(text), idx + len(query) + 40)
-                snippet = ("..." if start > 0 else "") + text[start:end] + ("..." if end < len(text) else "")
-                
-                results.append({
-                    "source_id": source_id,
-                    "source_title": source_map.get(source_id, source_id),
-                    "page": page_num,
-                    "snippet": snippet,
-                })
-        except Exception:
+
+    # Directories to search: corrected -> manual -> raw -> regions
+    dirs_to_check = [
+        get_ocr_corrected_dir(),
+        get_ocr_manual_dir(),
+        get_ocr_raw_dir(),
+        get_ocr_regions_dir(),
+    ]
+
+    for base_dir in dirs_to_check:
+        if not base_dir.exists():
             continue
-            
+        for source_path in base_dir.iterdir():
+            if not source_path.is_dir():
+                continue
+            source_id = source_path.name
+            pages_dir = source_path / "pages"
+            if not pages_dir.exists():
+                continue
+
+            for page_entry in pages_dir.iterdir():
+                page_file = None
+                page_num = None
+                if page_entry.is_file() and page_entry.name.startswith("page_") and page_entry.name.endswith(".json"):
+                    try:
+                        page_num = int(page_entry.stem.split("_")[1])
+                        page_file = page_entry
+                    except Exception:
+                        continue
+                elif page_entry.is_dir() and page_entry.name.startswith("page_"):
+                    # Check regions / full_page.json
+                    full_p = page_entry / "full_page.json"
+                    if full_p.exists():
+                        try:
+                            page_num = int(page_entry.name.split("_")[1])
+                            page_file = full_p
+                        except Exception:
+                            continue
+
+                if page_file and page_num:
+                    key = (source_id, page_num)
+                    if key in seen_keys:
+                        continue
+                    try:
+                        page_json = load_json(page_file)
+                        text = flatten_ocr_text(page_json)
+                        if text and query in text.lower():
+                            seen_keys.add(key)
+                            idx = text.lower().find(query)
+                            start = max(0, idx - 40)
+                            end = min(len(text), idx + len(query) + 40)
+                            snippet = ("..." if start > 0 else "") + text[start:end] + ("..." if end < len(text) else "")
+                            results.append({
+                                "source_id": source_id,
+                                "source_title": source_map.get(source_id, source_id),
+                                "page": page_num,
+                                "snippet": snippet,
+                            })
+                    except Exception:
+                        continue
+
+    # Also search extraction artifacts (page notes)
+    try:
+        sources_list = wb.load_sources()
+        for s in sources_list:
+            s_id = s.get("source_id")
+            if not s_id:
+                continue
+            artifact = reading_extraction_artifact(s_id)
+            page_notes = artifact.get("page_notes", {})
+            for page_str, note_val in page_notes.items():
+                if isinstance(note_val, str) and note_val.strip() and query in note_val.lower():
+                    try:
+                        p_num = int(page_str)
+                    except Exception:
+                        continue
+                    key = (s_id, p_num)
+                    if key not in seen_keys:
+                        seen_keys.add(key)
+                        idx = note_val.lower().find(query)
+                        start = max(0, idx - 40)
+                        end = min(len(note_val), idx + len(query) + 40)
+                        snippet = ("..." if start > 0 else "") + note_val[start:end] + ("..." if end < len(note_val) else "")
+                        results.append({
+                            "source_id": s_id,
+                            "source_title": source_map.get(s_id, s_id),
+                            "page": p_num,
+                            "snippet": snippet,
+                        })
+    except Exception:
+        pass
+
     # Sort results by source_id, page
     results.sort(key=lambda r: (r["source_id"], r["page"]))
     return results[:100]
+
 

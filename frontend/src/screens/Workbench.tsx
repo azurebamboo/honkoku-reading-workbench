@@ -457,11 +457,19 @@ function Workbench() {
         method: "PUT",
         body: JSON.stringify({ note })
       });
-      await loadReadingPage(sourceId, page);
+      setPageNoteText(note);
+      setReadingPage((curr) => {
+        if (!curr) return curr;
+        return {
+          ...curr,
+          page_note: note
+        };
+      });
     } catch (err) {
       alert("Failed to save page note: " + err.message);
     }
   }
+
 
   async function loadProjects() {
     try {
@@ -1267,7 +1275,7 @@ function Workbench() {
               onChange={(event) => updateFilter("query", event.target.value)}
               onFocus={() => setIsSearchFocused(true)}
               onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
-              placeholder=""
+              placeholder="Search document text across all pages (e.g. Japanese, English)..."
             />
             {isSearchFocused && (filters.query || "").trim() && (
               <div className="globalOcrDropdown" style={{
@@ -2365,7 +2373,8 @@ function ReadingDesk({
   const [parsingEngine, setParsingEngine] = useState("ndlocr_lite");
   const [customParsingEngine, setCustomParsingEngine] = useState("");
   const [ocrSettings, setOcrSettings] = useState<Record<string, any>>({});
-  const [ocrInsertMode, setOcrInsertMode] = useState("append");
+  const [ocrInsertMode, setOcrInsertMode] = useState("cursor");
+  const lastCursorPosRef = useRef({ start: 0, end: 0 });
   const [region, setRegion] = useState(null);
   const [regionDrag, setRegionDrag] = useState(null);
   const [regionResult, setRegionResult] = useState(null);
@@ -2567,6 +2576,7 @@ function ReadingDesk({
   const handleTextareaSelect = (e) => {
     const start = e.target.selectionStart;
     const end = e.target.selectionEnd;
+    lastCursorPosRef.current = { start, end };
     const val = e.target.value;
     const ranges = getHighlightRanges(val);
 
@@ -2723,8 +2733,8 @@ function ReadingDesk({
     }
 
     // Convert markdown highlights ==text== and HTML-like highlights <mark>text</mark> to real <mark> tags in backdrop
-    escapedText = escapedText.replace(/==([\s\S]*?)==/g, "<mark>$1</mark>");
-    escapedText = escapedText.replace(/&lt;mark&gt;([\s\S]*?)&lt;\/mark&gt;/g, "<mark>$1</mark>");
+    escapedText = escapedText.replace(/==([\s\S]*?)==/g, "<mark>==$1==</mark>");
+    escapedText = escapedText.replace(/&lt;mark&gt;([\s\S]*?)&lt;\/mark&gt;/g, "<mark>&lt;mark&gt;$1&lt;/mark&gt;</mark>");
 
     return escapedText;
   };
@@ -3171,7 +3181,17 @@ function ReadingDesk({
       }
       const nextText = result.text || "";
       if (insertIntoText) {
-        const targetText = ocrInsertMode === "append" && text.trim() ? `${text.trimEnd()}\n\n${nextText}` : nextText;
+        let targetText = nextText;
+        if (ocrInsertMode === "append" && text.trim()) {
+          targetText = `${text.trimEnd()}\n\n${nextText}`;
+        } else if (ocrInsertMode === "cursor") {
+          const textarea = textareaRef.current;
+          const start = lastCursorPosRef.current.start ?? (textarea ? textarea.selectionStart : text.length);
+          const end = lastCursorPosRef.current.end ?? (textarea ? textarea.selectionEnd : text.length);
+          const safeStart = Math.min(Math.max(0, start), text.length);
+          const safeEnd = Math.min(Math.max(safeStart, end), text.length);
+          targetText = text.substring(0, safeStart) + nextText + text.substring(safeEnd);
+        }
         onTextChange(targetText);
         pushToHistoryImmediately(targetText);
       }
@@ -3210,7 +3230,17 @@ function ReadingDesk({
       setRegionOcrResult(result);
       const nextText = result.text || "";
       if (insertIntoText) {
-        const targetText = ocrInsertMode === "append" && text.trim() ? `${text.trimEnd()}\n\n${nextText}` : nextText;
+        let targetText = nextText;
+        if (ocrInsertMode === "append" && text.trim()) {
+          targetText = `${text.trimEnd()}\n\n${nextText}`;
+        } else if (ocrInsertMode === "cursor") {
+          const textarea = textareaRef.current;
+          const start = lastCursorPosRef.current.start ?? (textarea ? textarea.selectionStart : text.length);
+          const end = lastCursorPosRef.current.end ?? (textarea ? textarea.selectionEnd : text.length);
+          const safeStart = Math.min(Math.max(0, start), text.length);
+          const safeEnd = Math.min(Math.max(safeStart, end), text.length);
+          targetText = text.substring(0, safeStart) + nextText + text.substring(safeEnd);
+        }
         onTextChange(targetText);
         pushToHistoryImmediately(targetText);
       }
@@ -3381,8 +3411,9 @@ function ReadingDesk({
               onChange={(e) => setOcrInsertMode(e.target.value)}
               style={{ padding: "4px 8px", borderRadius: 4, border: "1px solid var(--border-color)" }}
             >
-              <option value="replace">Replace Editor Text</option>
+              <option value="cursor">Insert at Cursor Position</option>
               <option value="append">Append Editor Text</option>
+              <option value="replace">Replace Editor Text</option>
             </select>
           </label>
         </div>
