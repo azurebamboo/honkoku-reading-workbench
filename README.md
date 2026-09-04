@@ -51,7 +51,26 @@ Automated multi-page document OCR queue with real-time progress tracking:
 
 ---
 
-### Option 2: Run from Source (For Developers & Power Users)
+### Option 2: Use with an AI Agent (Zero Manual Setup)
+> **Zero manual setup!** This repository includes an official **AI Agent Skill** ([`SKILL.md`](SKILL.md) / [`.agents/skills/ocr-reading-desk/`](.agents/skills/ocr-reading-desk/)).
+
+If you use an AI coding assistant (such as **Google Antigravity**, **Claude Code**, **Cursor**, or **OpenHands**):
+
+1. Give your AI agent this repository URL or clone it into your workspace:
+   ```text
+   https://github.com/azurebamboo/koshu-reading-workbench
+   ```
+2. Simply ask your agent in natural language:
+   - *"Install and start the OCR Reading Desk"*
+   - *"Launch the reading desk and open my browser"*
+   - *"Import this document: path/to/scan.pdf"*
+   - *"Combine the notes for source 1 and source 2 into a chapter summary"*
+
+Your agent will read [`SKILL.md`](SKILL.md), run the automated installer (`python install.py`), verify server health, launch the application on port `8000`, and manage document transcriptions via the built-in CLI tools.
+
+---
+
+### Option 3: Run from Source (For Developers & Power Users)
 If you prefer to clone the Git repository and run directly from source:
 
 1. **Prerequisites**:
@@ -91,6 +110,33 @@ If you prefer to clone the Git repository and run directly from source:
    - Click **Save OCR Edit** (or press <kbd>Ctrl</kbd>+<kbd>S</kbd>) to save your corrected text.
 5. **Export Your Work**:
    - Use **Export All TXT**, **Export All MD**, or **Export All JSON** to export clean transcripts of the entire document.
+
+---
+
+## 🤖 AI Agent Tools & Automation
+
+In addition to the browser interface, AI agents (and automated terminal scripts) can perform document workflows programmatically using built-in CLI tools:
+
+- **Automated Lifecycle Control**:
+  ```bash
+  python scripts/skill_launcher.py bootstrap   # Check requirements, set up .venv, install npm & build UI
+  python scripts/skill_launcher.py start       # Launch backend server on port 8000 & open browser
+  python scripts/skill_launcher.py status      # Check if server is running and healthy
+  ```
+- **Import Documents Programmatically**:
+  ```bash
+  python scripts/agent_tools/import_source.py path/to/document.pdf --title "Archival Source Title"
+  ```
+  *(Automatically converts `.pdf`, `.jpg`, `.png`, `.tiff`, and `.webp` images into registered sources)*
+- **Merge & Synthesize Notes Across Sources**:
+  ```bash
+  python scripts/agent_tools/merge_ocr_notes.py source_1 source_2 --output artifacts/notes/summary.md --title "Combined Chapter Notes"
+  ```
+- **Search & Organize Transcriptions**:
+  ```bash
+  python scripts/agent_tools/organize_exports.py search "keyword or phrase"
+  python scripts/agent_tools/organize_exports.py export --name "Project_Archive" --sources source_1 source_2
+  ```
 
 ---
 
