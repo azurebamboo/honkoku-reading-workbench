@@ -36,25 +36,40 @@ Automated multi-page document OCR queue with real-time progress tracking:
 
 ## 🚀 Quick Start Guide
 
-### 1. Prerequisites
-Ensure you have the following installed on your computer:
-- **Python**: Version 3.10 or higher ([Download Python](https://www.python.org/downloads/))
-- **Node.js**: Version 18 or higher ([Download Node.js](https://nodejs.org/))
+### Option 1: Standalone Download (Recommended for Most Users)
+> **No Python, Node.js, or terminal commands required!** Everything (the local NDL-OCR engine, runtime, and web interface) is fully self-contained in the release package.
 
-### 2. One-Click Setup
-Open your terminal (PowerShell, Command Prompt, or Terminal) in the project folder and run:
+1. Go to the [**Latest GitHub Release (v1.0.5)**](https://github.com/azurebamboo/koshu-reading-workbench/releases/latest).
+2. Download the zip file for your system:
+   - **Windows**: [`koshu-workbench-windows.zip`](https://github.com/azurebamboo/koshu-reading-workbench/releases/latest/download/koshu-workbench-windows.zip)
+   - **macOS**: [`koshu-workbench-macos.zip`](https://github.com/azurebamboo/koshu-reading-workbench/releases/latest/download/koshu-workbench-macos.zip)
+3. Extract (unzip) the folder anywhere on your computer.
+4. Launch the application:
+   - **Windows**: Double-click **`start.bat`**
+   - **macOS**: Double-click **`start.command`**
+5. Your browser will automatically open to `http://localhost:8000/`. You are ready to start reading and proofreading!
 
-```bash
-python install.py
-```
-> **What this does**: Automatically sets up the Python virtual environment, installs backend dependencies, installs frontend packages, and compiles the single-file web application bundle.
+---
 
-### 3. Launch the Application
+### Option 2: Run from Source (For Developers & Power Users)
+If you prefer to clone the Git repository and run directly from source:
 
-- **Windows**: Double-click **`start.bat`** (or run `python scripts/skill_launcher.py start`)
-- **macOS / Linux**: Double-click **`start.command`** (or run `python scripts/skill_launcher.py start`)
+1. **Prerequisites**:
+   - **Python**: Version 3.10 or higher ([Download Python](https://www.python.org/downloads/))
+   - **Node.js**: Version 18 or higher ([Download Node.js](https://nodejs.org/))
 
-The workbench starts on port `8000` and automatically opens `http://localhost:8000/` in your default web browser.
+2. **One-Click Setup**:
+   In your terminal inside the cloned project directory, run:
+   ```bash
+   python install.py
+   ```
+   > **What this does**: Automatically sets up the Python virtual environment, installs backend dependencies, installs frontend packages, and compiles the single-file web application bundle.
+
+3. **Launch the Application**:
+   - Double-click **`start.bat`** (Windows) / **`start.command`** (macOS), or run:
+     ```bash
+     python scripts/skill_launcher.py start
+     ```
 
 ---
 
