@@ -29,6 +29,8 @@ hiddenimports = [
     'uvicorn.lifespan.on',
     'uvicorn.loops.auto',
     'fastapi',
+    'multipart',
+    'python_multipart',
     'pypdfium2',
     'PIL',
     'deim',

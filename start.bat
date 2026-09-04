@@ -1,21 +1,30 @@
 @echo off
-echo Starting Koshu Standalone OCR & Reading Desk...
-echo This command prompt window will stay open to run the local OCR server.
-echo Closing this window will stop the server.
+echo Starting Koshu Standalone OCR ^& Reading Desk...
 echo.
 
-:: Start the backend server
-start "" "%~dp0dist\koshu-ocr-backend\koshu-ocr-backend.exe"
-
-:: Wait 3 seconds for the server to initialize
-timeout /t 3 /nobreak >nul
-
-:: Open default web browser to the local server
-start http://localhost:8000/
-
-echo Server is running on http://localhost:8000/
-echo Press any key in this window to stop the server...
-pause >nul
-
-:: Kill the backend server on exit
-taskkill /f /im koshu-ocr-backend.exe >nul 2>&1
+if exist "%~dp0koshu-ocr-backend.exe" (
+    echo Starting compiled binary server...
+    start "" "%~dp0koshu-ocr-backend.exe"
+    timeout /t 3 /nobreak >nul
+    start http://localhost:8000/
+    echo Server is running on http://localhost:8000/
+    echo Press any key in this window to stop the server...
+    pause >nul
+    taskkill /f /im koshu-ocr-backend.exe >nul 2>&1
+) else if exist "%~dp0dist\koshu-ocr-backend\koshu-ocr-backend.exe" (
+    echo Starting compiled binary server...
+    start "" "%~dp0dist\koshu-ocr-backend\koshu-ocr-backend.exe"
+    timeout /t 3 /nobreak >nul
+    start http://localhost:8000/
+    echo Server is running on http://localhost:8000/
+    echo Press any key in this window to stop the server...
+    pause >nul
+    taskkill /f /im koshu-ocr-backend.exe >nul 2>&1
+) else (
+    echo Compiled binary release not found. Launching via Python launcher...
+    if "%~1"=="" (
+        python "%~dp0scripts\skill_launcher.py" start
+    ) else (
+        python "%~dp0scripts\skill_launcher.py" %*
+    )
+)

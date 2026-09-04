@@ -18,7 +18,13 @@ app = FastAPI(title="Koshu Standalone OCR & Reading Desk API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "null"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "null",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -47,7 +53,7 @@ from fastapi.responses import FileResponse
 if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
     BUNDLE_ROOT = Path(sys._MEIPASS)
 else:
-    BUNDLE_ROOT = Path(__file__).resolve().parents[3]
+    BUNDLE_ROOT = Path(__file__).resolve().parent.parent.parent
 
 @app.get("/")
 def read_root():

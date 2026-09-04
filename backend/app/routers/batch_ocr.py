@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from datetime import datetime, timezone
+import asyncio
 from fastapi import APIRouter, HTTPException, Query, Request, BackgroundTasks
 from fastapi.responses import FileResponse
 
@@ -26,6 +27,105 @@ async def run_batch_ocr_page(*args: Any, **kwargs: Any) -> Any:
 
 def save_reading_extraction_artifact(*args: Any, **kwargs: Any) -> Any:
     return wb.save_reading_extraction_artifact(*args, **kwargs)
+
+async def execute_batch_biography_run(
+    run_id: str,
+    selected_sources: list[dict[str, Any]],
+    temporary_ocr_text_path: Path | None,
+    page_scope: str,
+    max_pages: int | None,
+    run_ocr: bool,
+    engine_id: str,
+    ocr_settings: dict[str, Any],
+    requested_source_skill_id: str | None,
+    analysis_engine: str,
+    analysis_mode: str,
+    worker_skill_id: str,
+    max_quote_candidates: int,
+) -> None:
+    try:
+        manifest_path = batch_run_path(run_id)
+        if not manifest_path.exists():
+            return
+        manifest = read_json(manifest_path)
+
+        for source in selected_sources:
+            if run_id in cancelled_run_ids or manifest.get("status") == "stopped":
+                break
+            temporary_pages: dict[int, dict[str, str]] = {}
+            if temporary_ocr_text_path:
+                temporary_pages = parse_page_marked_ocr_text(temporary_ocr_text_path.read_text(encoding="utf-8"))
+            pages = sorted(temporary_pages) if page_scope == "temporary_text" and temporary_pages else batch_source_pages(source, page_scope)
+            if isinstance(max_pages, int) and max_pages > 0:
+                pages = pages[:max_pages]
+
+            ocr_by_page: dict[int, dict[str, Any]] = {}
+            if temporary_ocr_text_path:
+                ocr_by_page.update(write_temporary_text_ocr_records(run_id, source, temporary_ocr_text_path, pages))
+
+            for page in pages:
+                if run_id in cancelled_run_ids:
+                    break
+                if page in ocr_by_page:
+                    continue
+                existing_ocr = best_ocr_for_page(source["source_id"], page)
+                should_run_ocr = run_ocr and (existing_ocr["ocr_status"] == "missing" or existing_ocr.get("ocr_layer") != "corrected")
+                if should_run_ocr:
+                    existing_ocr = await run_batch_ocr_page(run_id, source, page, engine_id, ocr_settings)
+                ocr_by_page[page] = existing_ocr
+                manifest["updated_at"] = datetime.now(timezone.utc).isoformat()
+                write_json(manifest_path, manifest)
+
+            repeated_texts = repeated_ocr_texts_from_records(list(ocr_by_page.values()))
+            lexicon = network_entity_lexicon()
+            article_context: dict[str, Any] | None = None
+            source_skill_id = requested_source_skill_id or source_skill_id_for_worker(source)
+
+            for page in pages:
+                if run_id in cancelled_run_ids:
+                    break
+                article_context = compiled_volume_context_for_page(
+                    page,
+                    ocr_by_page.get(page, {}).get("ocr_text", ""),
+                    article_context,
+                )
+                packet = create_batch_page_packet(
+                    run_id,
+                    source,
+                    page,
+                    ocr_by_page.get(page),
+                    lexicon=lexicon,
+                    repeated_texts=repeated_texts,
+                    article_context=article_context,
+                )
+                packet = await enrich_packet_with_worker_candidates(
+                    packet,
+                    source,
+                    {**ocr_by_page.get(page, {}), "article_context": article_context},
+                    analysis_engine=analysis_engine,
+                    analysis_mode=analysis_mode,
+                    worker_skill_id=worker_skill_id,
+                    source_skill_id=source_skill_id,
+                    max_quote_candidates=max_quote_candidates,
+                )
+                write_json(batch_page_path(run_id, source["source_id"], page), packet)
+
+        if run_id not in cancelled_run_ids and manifest.get("status") != "stopped":
+            manifest["status"] = "completed"
+            manifest["updated_at"] = datetime.now(timezone.utc).isoformat()
+            write_json(manifest_path, manifest)
+            refresh_batch_manifest_counts(run_id)
+    except Exception as exc:
+        print(f"Error executing batch run {run_id}: {exc}")
+        try:
+            manifest_path = batch_run_path(run_id)
+            if manifest_path.exists():
+                manifest = read_json(manifest_path)
+                manifest["status"] = f"error: {exc}"
+                write_json(manifest_path, manifest)
+        except Exception:
+            pass
+
 
 async def create_batch_biography_run_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
     source_id = payload.get("source_id") or "raw_ee2029d2f4ef"
@@ -105,7 +205,6 @@ async def create_batch_biography_run_from_payload(payload: dict[str, Any]) -> di
         "counts": {},
         "notes": "Provisional batch review packets. Nothing here is durable evidence until promoted.",
     }
-    write_json(batch_run_path(run_id), manifest)
 
     for source in selected_sources:
         temporary_pages: dict[int, dict[str, str]] = {}
@@ -122,52 +221,28 @@ async def create_batch_biography_run_from_payload(payload: dict[str, Any]) -> di
             "pages": pages,
         }
         manifest["sources"].append(source_summary)
-        write_json(batch_run_path(run_id), manifest)
-        ocr_by_page: dict[int, dict[str, Any]] = {}
-        if temporary_ocr_text_path:
-            ocr_by_page.update(write_temporary_text_ocr_records(run_id, source, temporary_ocr_text_path, pages))
-        for page in pages:
-            if page in ocr_by_page:
-                continue
-            existing_ocr = best_ocr_for_page(source["source_id"], page)
-            should_run_ocr = run_ocr and (existing_ocr["ocr_status"] == "missing" or existing_ocr.get("ocr_layer") != "corrected")
-            if should_run_ocr:
-                existing_ocr = await run_batch_ocr_page(run_id, source, page, engine_id, ocr_settings)
-            ocr_by_page[page] = existing_ocr
-        repeated_texts = repeated_ocr_texts_from_records(list(ocr_by_page.values()))
-        lexicon = network_entity_lexicon()
-        article_context: dict[str, Any] | None = None
-        source_skill_id = requested_source_skill_id or source_skill_id_for_worker(source)
-        for page in pages:
-            article_context = compiled_volume_context_for_page(
-                page,
-                ocr_by_page.get(page, {}).get("ocr_text", ""),
-                article_context,
-            )
-            packet = create_batch_page_packet(
-                run_id,
-                source,
-                page,
-                ocr_by_page.get(page),
-                lexicon=lexicon,
-                repeated_texts=repeated_texts,
-                article_context=article_context,
-            )
-            packet = await enrich_packet_with_worker_candidates(
-                packet,
-                source,
-                {**ocr_by_page.get(page, {}), "article_context": article_context},
-                analysis_engine=analysis_engine,
-                analysis_mode=analysis_mode,
-                worker_skill_id=worker_skill_id,
-                source_skill_id=source_skill_id,
-                max_quote_candidates=max_quote_candidates,
-            )
-            write_json(batch_page_path(run_id, source["source_id"], page), packet)
 
-    manifest["status"] = "completed"
     write_json(batch_run_path(run_id), manifest)
-    manifest = refresh_batch_manifest_counts(run_id)
+
+    # Launch background async processing task
+    asyncio.create_task(
+        execute_batch_biography_run(
+            run_id=run_id,
+            selected_sources=selected_sources,
+            temporary_ocr_text_path=temporary_ocr_text_path,
+            page_scope=page_scope,
+            max_pages=max_pages,
+            run_ocr=run_ocr,
+            engine_id=engine_id,
+            ocr_settings=ocr_settings,
+            requested_source_skill_id=requested_source_skill_id,
+            analysis_engine=analysis_engine,
+            analysis_mode=analysis_mode,
+            worker_skill_id=worker_skill_id,
+            max_quote_candidates=max_quote_candidates,
+        )
+    )
+
     return {"ok": True, "run": manifest, "message": f"Batch biography run created: {run_id}"}
 
 
