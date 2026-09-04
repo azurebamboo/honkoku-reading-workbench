@@ -573,6 +573,9 @@ p {
   position: relative;
   margin: 0 auto 12px;
   min-width: 240px;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
 }
 
 .pageImageFrame.mode-crop {
@@ -583,8 +586,17 @@ p {
   cursor: grab;
 }
 
-.pageImageFrame.mode-pan:active {
+.pageImageFrame.mode-pan:active,
+.pageImageFrame.mode-pan.is-dragging {
   cursor: grabbing;
+}
+
+.pageImageFrame.is-dragging .ocrBoundingBox {
+  pointer-events: none !important;
+}
+
+.pdfSideNav.dragging-disabled {
+  pointer-events: none !important;
 }
 
 .regionOverlay {

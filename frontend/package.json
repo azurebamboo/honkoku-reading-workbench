@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "typecheck": "tsc --noEmit",
-    "check:no-js": "sh -c 'if find src -type f \\( -name \"*.js\" -o -name \"*.jsx\" -o -name \"*.cjs\" -o -name \"*.mjs\" \\) | grep .; then echo \"Plain JavaScript files are not allowed in frontend/src\" >&2; exit 1; fi'",
+    "check:no-js": "node -e \"const fs=require('fs'); const files=fs.readdirSync('src',{recursive:true}); const js=files.filter(f=>/\\.(js|jsx|cjs|mjs)$/.test(f)); if(js.length){console.error('Plain JavaScript files are not allowed in frontend/src:',js); process.exit(1);}\"",
     "build": "npm run check:no-js && npm run typecheck && vite build",
     "preview": "vite preview"
   },

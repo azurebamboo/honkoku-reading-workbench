@@ -2375,12 +2375,15 @@ function ReadingDesk({
   const [ocrSettings, setOcrSettings] = useState<Record<string, any>>({});
   const [ocrInsertMode, setOcrInsertMode] = useState("cursor");
   const lastCursorPosRef = useRef({ start: 0, end: 0 });
-  const [region, setRegion] = useState(null);
-  const [regionDrag, setRegionDrag] = useState(null);
-  const [regionResult, setRegionResult] = useState(null);
-  const [regionOcrResult, setRegionOcrResult] = useState(null);
+  const [region, setRegion] = useState<any>(null);
+  const [regionDrag, setRegionDrag] = useState<any>(null);
+  const regionDragRef = useRef<any>(null);
+  const justFinishedDragRef = useRef(false);
+  const [regionResult, setRegionResult] = useState<any>(null);
+  const [regionOcrResult, setRegionOcrResult] = useState<any>(null);
   const [tableMessage, setTableMessage] = useState("");
-  const [panDrag, setPanDrag] = useState(null);
+  const [panDrag, setPanDrag] = useState<any>(null);
+  const isInteractingWithImage = Boolean(regionDrag || panDrag);
 
   const handleTextareaScroll = (e) => {
     if (backdropRef.current) {
@@ -2397,6 +2400,8 @@ function ReadingDesk({
     setSelectedHighlightText("");
     setRegion(null);
     setRegionDrag(null);
+    regionDragRef.current = null;
+    justFinishedDragRef.current = false;
     setRegionResult(null);
     setRegionOcrResult(null);
     setTableMessage("");
@@ -2994,6 +2999,7 @@ function ReadingDesk({
   };
 
   const handleBoundingBoxClick = (idx) => {
+    if (justFinishedDragRef.current || regionDragRef.current) return;
     const textarea = textareaRef.current;
     if (!textarea) return;
 
@@ -3043,17 +3049,32 @@ function ReadingDesk({
     const frame = imageFrameRef.current;
     if (!frame) return null;
     const rect = frame.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
     const x = clamp((event.clientX - rect.left) / rect.width, 0, 1);
     const y = clamp((event.clientY - rect.top) / rect.height, 0, 1);
     return { x, y };
   }
 
+  function clearActiveRegion() {
+    setRegion(null);
+    setRegionDrag(null);
+    regionDragRef.current = null;
+    setRegionResult(null);
+    setRegionOcrResult(null);
+    setTableMessage("Region selection cleared.");
+  }
+
   function handlePointerDown(event) {
     if (!pageData?.source) return;
+    if (event.button !== 0) return; // Only primary mouse button
+
     if (pointerMode === "pan") {
       event.preventDefault(); // Prevent image dragging
       const wrap = pageWrapRef.current;
       if (!wrap) return;
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch (_) {}
       setPanDrag({
         startX: event.clientX,
         startY: event.clientY,
@@ -3062,11 +3083,19 @@ function ReadingDesk({
       });
       return;
     }
+
     // Crop mode
+    event.preventDefault(); // Prevent native drag / text selection
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch (_) {}
+
     const point = regionPointFromEvent(event);
     if (!point) return;
     setRegionResult(null);
-    setRegionDrag({ start: point, current: point });
+    const initialDrag = { start: point, current: point };
+    regionDragRef.current = initialDrag;
+    setRegionDrag(initialDrag);
   }
 
   function handlePointerMove(event) {
@@ -3080,17 +3109,46 @@ function ReadingDesk({
       wrap.scrollTop = panDrag.scrollTop - dy;
       return;
     }
-    // Crop mode
-    if (!regionDrag) return;
+
+    // Crop mode: drag continues smoothly even if pointer moves past image edges or over overlays
+    const activeDrag = regionDragRef.current || regionDrag;
+    if (!activeDrag) return;
     const point = regionPointFromEvent(event);
     if (!point) return;
-    setRegionDrag((current) => ({ ...current, current: point }));
+    const updated = { start: activeDrag.start, current: point };
+    regionDragRef.current = updated;
+    setRegionDrag(updated);
   }
 
-  function finishRegionSelection() {
-    if (!regionDrag) return;
-    const nextRegion = regionFromDrag(regionDrag.start, regionDrag.current);
+  function finishRegionSelection(event?: any) {
+    const activeDrag = regionDragRef.current || regionDrag;
+    if (!activeDrag) return;
+
+    let currentPoint = activeDrag.current;
+    if (event && event.clientX !== undefined) {
+      const p = regionPointFromEvent(event);
+      if (p) currentPoint = p;
+    }
+
+    const nextRegion = regionFromDrag(activeDrag.start, currentPoint);
+    regionDragRef.current = null;
     setRegionDrag(null);
+
+    // If mouse was clicked or barely moved (< 0.015 relative width & height)
+    if (nextRegion.width < 0.015 && nextRegion.height < 0.015) {
+      // If a region already exists, clicking once on the page clears it cleanly
+      if (region) {
+        clearActiveRegion();
+      }
+      return;
+    }
+
+    // Mark that a drag just ended so underlying bounding box clicks don't jump textarea
+    justFinishedDragRef.current = true;
+    setTimeout(() => {
+      justFinishedDragRef.current = false;
+    }, 150);
+
     if (nextRegion.width < 0.02 || nextRegion.height < 0.02) {
       setTableMessage("Selected region is too small. Drag around the passage or table area you want to inspect.");
       return;
@@ -3099,13 +3157,69 @@ function ReadingDesk({
     setTableMessage("Region selected. Ready for Regional OCR or Cropping.");
   }
 
-  function handlePointerUp() {
+  function handlePointerUp(event?: any) {
+    if (event?.currentTarget?.hasPointerCapture?.(event.pointerId)) {
+      try {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      } catch (_) {}
+    }
     if (pointerMode === "pan") {
       if (panDrag) setPanDrag(null);
       return;
     }
-    finishRegionSelection();
+    finishRegionSelection(event);
   }
+
+  function handleLostPointerCapture() {
+    if (panDrag) setPanDrag(null);
+    if (regionDragRef.current || regionDrag) {
+      finishRegionSelection();
+    }
+  }
+
+  useEffect(() => {
+    if (!regionDrag && !panDrag) return;
+
+    function handleGlobalPointerUp(e) {
+      handlePointerUp(e);
+    }
+
+    function handleKeyDown(e) {
+      if (e.key === "Escape") {
+        if (regionDragRef.current) {
+          regionDragRef.current = null;
+          setRegionDrag(null);
+          setTableMessage("Crop selection cancelled.");
+        }
+        if (panDrag) {
+          setPanDrag(null);
+        }
+      }
+    }
+
+    window.addEventListener("pointerup", handleGlobalPointerUp);
+    window.addEventListener("pointercancel", handleGlobalPointerUp);
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("pointerup", handleGlobalPointerUp);
+      window.removeEventListener("pointercancel", handleGlobalPointerUp);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [regionDrag, panDrag]);
+
+  useEffect(() => {
+    function handleEscapeToClear(e) {
+      if (e.key === "Escape" && activeRegion && !regionDragRef.current) {
+        if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+          return;
+        }
+        clearActiveRegion();
+      }
+    }
+    window.addEventListener("keydown", handleEscapeToClear);
+    return () => window.removeEventListener("keydown", handleEscapeToClear);
+  }, [activeRegion]);
 
   async function cropSelectedRegion() {
     if (!pageData?.source || !activeRegion) {
@@ -3448,6 +3562,17 @@ function ReadingDesk({
           >
             Export Page Crop
           </button>
+          {activeRegion && (
+            <button
+              className="quietButton light"
+              type="button"
+              onClick={clearActiveRegion}
+              title="Clear current selection (or press Esc, or click page once)"
+              style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "#b33f2e" }}
+            >
+              <X size={14} /> Clear Selection
+            </button>
+          )}
           <button
             className="quietButton light"
             type="button"
@@ -3583,8 +3708,9 @@ function ReadingDesk({
               </div>
               <div className="pdfBodyContainer">
                 <button
-                  className="pdfSideNav prev"
+                  className={`pdfSideNav prev ${isInteractingWithImage ? "dragging-disabled" : ""}`}
                   type="button"
+                  style={{ pointerEvents: isInteractingWithImage ? "none" : undefined }}
                   onClick={() => {
                     const pageIdx = pageOptions.indexOf(Number(page));
                     if (pageIdx > 0) onPageChange(pageOptions[pageIdx - 1]);
@@ -3596,13 +3722,14 @@ function ReadingDesk({
                 </button>
                 <div className="pageImageWrap" ref={pageWrapRef}>
                   <div
-                    className={`pageImageFrame mode-${pointerMode}`}
+                    className={`pageImageFrame mode-${pointerMode} ${isInteractingWithImage ? "is-dragging" : ""}`}
                     ref={imageFrameRef}
                     style={{ width: `${pageZoom * 100}%` }}
                     onPointerDown={handlePointerDown}
                     onPointerMove={handlePointerMove}
                     onPointerUp={handlePointerUp}
-                    onPointerLeave={handlePointerUp}
+                    onPointerCancel={handlePointerUp}
+                    onLostPointerCapture={handleLostPointerCapture}
                   >
                     <img
                       className="pageImage"
@@ -3623,9 +3750,17 @@ function ReadingDesk({
                           key={`bbox-${idx}`}
                           className={`ocrBoundingBox ${isHovered ? "hovered" : ""} ${isActive ? "active" : ""}`}
                           style={rectStyle}
-                          onMouseEnter={() => setHoveredLineIndex(idx)}
-                          onMouseLeave={() => setHoveredLineIndex(-1)}
-                          onClick={() => handleBoundingBoxClick(idx)}
+                          onMouseEnter={() => {
+                            if (!isInteractingWithImage) setHoveredLineIndex(idx);
+                          }}
+                          onMouseLeave={() => {
+                            if (!isInteractingWithImage) setHoveredLineIndex(-1);
+                          }}
+                          onClick={() => {
+                            if (!justFinishedDragRef.current && !regionDragRef.current) {
+                              handleBoundingBoxClick(idx);
+                            }
+                          }}
                           title={block.text}
                         />
                       );
@@ -3650,8 +3785,9 @@ function ReadingDesk({
                   )}
                 </div>
                 <button
-                  className="pdfSideNav next"
+                  className={`pdfSideNav next ${isInteractingWithImage ? "dragging-disabled" : ""}`}
                   type="button"
+                  style={{ pointerEvents: isInteractingWithImage ? "none" : undefined }}
                   onClick={() => {
                     const pageIdx = pageOptions.indexOf(Number(page));
                     if (pageIdx !== -1 && pageIdx < pageOptions.length - 1) onPageChange(pageOptions[pageIdx + 1]);
