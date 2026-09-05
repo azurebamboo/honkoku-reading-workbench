@@ -41,8 +41,8 @@ Automated multi-page document OCR queue with real-time progress tracking:
 
 1. Go to the [**Latest GitHub Release (v1.0.6)**](https://github.com/azurebamboo/honkoku-reading-workbench/releases/latest).
 2. Download the zip file for your system:
-   - **Windows**: [`koshu-workbench-windows.zip`](https://github.com/azurebamboo/honkoku-reading-workbench/releases/latest/download/koshu-workbench-windows.zip)
-   - **macOS**: [`koshu-workbench-macos.zip`](https://github.com/azurebamboo/honkoku-reading-workbench/releases/latest/download/koshu-workbench-macos.zip)
+   - **Windows**: [`honkoku-workbench-windows.zip`](https://github.com/azurebamboo/honkoku-reading-workbench/releases/latest/download/honkoku-workbench-windows.zip)
+   - **macOS**: [`honkoku-workbench-macos.zip`](https://github.com/azurebamboo/honkoku-reading-workbench/releases/latest/download/honkoku-workbench-macos.zip)
 3. Extract (unzip) the folder anywhere on your computer.
 4. Launch the application:
    - **Windows**: Double-click **`start.bat`**

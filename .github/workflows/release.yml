@@ -18,10 +18,10 @@ jobs:
         os: [windows-latest, macos-latest]
         include:
           - os: windows-latest
-            artifact_name: koshu-workbench-windows
+            artifact_name: honkoku-workbench-windows
             launcher: start.bat
           - os: macos-latest
-            artifact_name: koshu-workbench-macos
+            artifact_name: honkoku-workbench-macos
             launcher: start.command
 
     steps:
@@ -102,7 +102,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            koshu-workbench-windows/koshu-workbench-windows.zip
-            koshu-workbench-macos/koshu-workbench-macos.zip
+            honkoku-workbench-windows/honkoku-workbench-windows.zip
+            honkoku-workbench-macos/honkoku-workbench-macos.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
