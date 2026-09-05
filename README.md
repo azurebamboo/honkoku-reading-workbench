@@ -26,7 +26,7 @@ Automated multi-page document OCR queue with real-time progress tracking:
 - **OCR Bounding Box Synchronization**: View OCR bounding boxes overlaid onto the scanned image. Clicking any box immediately highlights and navigates to the corresponding line in the text editor.
 - **Precision Crop & Regional OCR**: Click and drag to select any column, headline, passage, or table. Export selections directly as image files or trigger regional OCR on specific sections.
 - **Local & Offline by Default**: Powered by **NDL-OCR (NDLOCR-Lite)** developed by Japan's National Diet Library. Works 100% offline with zero subscription fees.
-- **Optional Cloud Vision AI**: Easily connect Google Gemini, OpenAI GPT-4o, or Anthropic Claude for alternative recognition passes or complex document layouts.
+- **Optional Cloud AI, PaddleOCR & MinerU**: Easily connect Google Gemini, OpenAI GPT-4o, Anthropic Claude, Baidu AI Studio PaddleOCR, or MinerU API for alternative recognition passes, complex document layouts, or multilingual document parsing.
 - **Browser Drag-and-Drop Import**: Drag PDFs, single images, or multi-image sets (`.pdf`, `.png`, `.jpg`, `.tiff`, `.webp`) directly into your browser window to import them instantly.
 - **Full Proofreading Toolkit**: Integrated regex search & replace, undo/redo history, highlight tagging, and one-click transcription saving.
 - **Batch Processing**: Run automated multi-page OCR across entire documents with real-time progress indicators.
@@ -140,21 +140,59 @@ In addition to the browser interface, AI agents (and automated terminal scripts)
 
 ---
 
-## 🌐 Optional: Cloud AI Vision OCR
+## 🌐 Optional: Cloud AI Vision, PaddleOCR, and MinerU APIs
 
-If you want to use cloud vision models (e.g. Gemini, GPT-4o, or Claude):
+While the workbench comes pre-configured with **NDL-OCR** for 100% offline local usage, you can also connect external cloud vision AI models and specialized online OCR services (**PaddleOCR**, **MinerU**) for complex layouts, formulas, or multilingual materials.
 
-1. Copy `.env.example` in the root folder to `.env`:
-   ```bash
-   cp .env.example .env
-   ```
-2. Open `.env` in any text editor and insert your API key(s):
+### What is an API Key & How to Get One
+Online AI and OCR providers require an **API Key** (a private access token) to identify your account and authenticate requests. If you don't already have keys, you can register directly on each provider's website:
+
+| Provider / Model | What It's Good For | How to Get an API Key |
+| :--- | :--- | :--- |
+| **Google Gemini** (`gemini-2.5-flash`) | Fast, multilingual vision & historical text understanding | Go to [Google AI Studio](https://aistudio.google.com/), sign in with a Google account, and click **"Get API key"**. |
+| **OpenAI** (`gpt-4o`, `gpt-4o-mini`) | High-accuracy general OCR & document reasoning | Go to [OpenAI Platform](https://platform.openai.com/api-keys), sign up, and click **"Create new secret key"**. |
+| **Anthropic Claude** (`claude-3-5-sonnet`) | Nuanced transcription & multi-column comprehension | Go to [Anthropic Console](https://console.anthropic.com/), sign up, and create an API key in your account settings. |
+| **MinerU API** (`vlm`) | Complex book/document layout parsing & formula/table extraction | Go to [MinerU Web](https://mineru.net/), register a free account, and copy your API key from the user center. |
+| **PaddleOCR** (`PaddleOCR-VL-1.6`) | Highly optimized Chinese, Japanese, and multilingual OCR | Go to [Baidu AI Studio / PaddleOCR](https://paddleocr.aistudio-app.com/) or [AI Studio](https://aistudio.baidu.com/), sign up, and generate an access token. |
+
+### Setting Up Your `.env` File
+
+1. In the project root folder, locate `.env.example` and create a copy named `.env`:
+   - **Windows**: Copy `.env.example` and rename it to `.env` (or run `copy .env.example .env` in your terminal).
+   - **macOS / Linux**: Run `cp .env.example .env` in your terminal.
+2. Open `.env` in any text editor (Notepad, TextEdit, VS Code) and paste in the API keys for any services you wish to use:
    ```ini
-   GEMINI_API_KEY=your_gemini_api_key_here
-   OPENAI_API_KEY=your_openai_api_key_here
-   ANTHROPIC_API_KEY=your_anthropic_api_key_here
+   # Cloud Vision Models
+   GEMINI_API_KEY=your_gemini_key_here
+   OPENAI_API_KEY=your_openai_key_here
+   ANTHROPIC_API_KEY=your_anthropic_key_here
+
+   # Mineru API
+   MINERU_API_KEY=your_mineru_key_here
+
+   # PaddleOCR API (Baidu AI Studio)
+   PADDLEOCR_API_KEY=your_paddleocr_token_here
    ```
-3. Restart the application. The cloud models will automatically appear in the **OCR Engine** dropdown.
+3. Save the file and restart the application. Any configured engines will automatically appear in the **OCR Engine** dropdown in the Reading Desk!
+
+---
+
+## 💬 Ongoing Project, Feedback & Getting Help
+
+This workbench is an **active, ongoing open-source project**. Archival materials, vertical Japanese typography, varying scan resolutions, and different operating systems can sometimes encounter edge cases or bugs.
+
+**If something doesn't work, crashes, or if you have a feature idea, please let us know so we can address it!**
+
+### How to Open an Issue (Beginner Friendly)
+
+1. **Sign up for GitHub**: If you don't already have an account, create a free account at [github.com/signup](https://github.com/signup).
+2. **Go to the Issues tab**: Visit the [**Issues Page for this repository**](https://github.com/azurebamboo/koshu-reading-workbench/issues).
+3. **Click "New Issue"**: Click the green **New Issue** button near the top right.
+4. **Describe the issue**:
+   - What operating system you are using (Windows 10/11, macOS, Linux).
+   - What document type you were processing (PDF, JPG, PNG, etc.).
+   - What happened or what error message appeared (screenshots or error text are very helpful!).
+5. **Submit**: Click **Submit new issue**. The creator will review your report and work to resolve the issue!
 
 ---
 
