@@ -3588,7 +3588,7 @@ function ReadingDesk({
             type="button"
             onClick={() => handleExportText("txt")}
             disabled={!sourceReady}
-            title="Export compiled OCR text of all pages in this source as plain text"
+            title="Export compiled OCR text and research notes of all pages in this source as plain text"
           >
             Export All TXT
           </button>

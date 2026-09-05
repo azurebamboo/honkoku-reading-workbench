@@ -763,6 +763,10 @@ def reading_source_export_text(source_id: str) -> dict[str, Any]:
     preferred = preferred_ocr_manifest(source_id)
     corrected_info = corrected_ocr_manifest(source_id)
     
+    artifact = reading_extraction_artifact(source_id)
+    source_notes = artifact.get("notes") or source.get("notes") or ""
+    page_notes_dict = artifact.get("page_notes", {})
+    
     for page in range(1, page_count + 1):
         raw_text = ""
         raw_page_json = {}
@@ -812,15 +816,24 @@ def reading_source_export_text(source_id: str) -> dict[str, Any]:
                 return match.group(0)
             effective_text = re.sub(r"\[Table:\s*([a-zA-Z0-9_]+)\]", replace_table_placeholder, effective_text)
 
+        page_note = page_notes_dict.get(str(page)) or page_notes_dict.get(page) or ""
         pages_text.append({
             "page": page,
-            "text": effective_text
+            "text": effective_text,
+            "note": page_note,
         })
 
-        
     plain_text = ""
     for p in pages_text:
-        plain_text += f"--- PAGE {p['page']} ---\n{p['text']}\n\n"
+        page_num = p["page"]
+        page_note = (p.get("note") or "").strip()
+        plain_text += f"--- PAGE {page_num} ---\n"
+        if page_note:
+            plain_text += f"[Page Note]\n{page_note}\n\n"
+        if p["text"]:
+            plain_text += f"{p['text']}\n\n"
+        elif not page_note:
+            plain_text += "\n"
         
     # Compile Markdown Export with notes
     project_id = wb.ACTIVE_PROJECT_ID
@@ -832,10 +845,6 @@ def reading_source_export_text(source_id: str) -> dict[str, Any]:
     if proj_note_path.exists():
         project_note = proj_note_path.read_text(encoding="utf-8")
         
-    artifact = reading_extraction_artifact(source_id)
-    source_notes = artifact.get("notes") or source.get("notes") or ""
-    page_notes_dict = artifact.get("page_notes", {})
-    
     title = source.get("title_original") or source.get("title") or source_id
     collection = source.get("collection") or ""
     citation = source.get("citation") or ""
@@ -865,7 +874,7 @@ def reading_source_export_text(source_id: str) -> dict[str, Any]:
     
     for p in pages_text:
         page_num = p["page"]
-        page_note = page_notes_dict.get(str(page_num)) or page_notes_dict.get(page_num) or ""
+        page_note = p.get("note") or page_notes_dict.get(str(page_num)) or page_notes_dict.get(page_num) or ""
         
         markdown_lines.append(f"## Page {page_num}")
         if page_note.strip():

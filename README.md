@@ -39,7 +39,7 @@ Automated multi-page document OCR queue with real-time progress tracking:
 ### Option 1: Standalone Download (Recommended for Most Users)
 > **No Python, Node.js, or terminal commands required!** Everything (the local NDL-OCR engine, runtime, and web interface) is fully self-contained in the release package.
 
-1. Go to the [**Latest GitHub Release (v1.0.5)**](https://github.com/azurebamboo/koshu-reading-workbench/releases/latest).
+1. Go to the [**Latest GitHub Release (v1.0.6)**](https://github.com/azurebamboo/koshu-reading-workbench/releases/latest).
 2. Download the zip file for your system:
    - **Windows**: [`koshu-workbench-windows.zip`](https://github.com/azurebamboo/koshu-reading-workbench/releases/latest/download/koshu-workbench-windows.zip)
    - **macOS**: [`koshu-workbench-macos.zip`](https://github.com/azurebamboo/koshu-reading-workbench/releases/latest/download/koshu-workbench-macos.zip)
