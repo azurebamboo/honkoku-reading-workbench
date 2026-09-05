@@ -1,4 +1,4 @@
-# 📖 Standalone OCR & Reading Desk
+# 📖 Honkoku Reading Workbench
 
 A local-first, privacy-focused OCR, document proofreading, and transcription workbench designed for historical documents, scanned books, newspapers, and archival materials.
 
@@ -39,10 +39,10 @@ Automated multi-page document OCR queue with real-time progress tracking:
 ### Option 1: Standalone Download (Recommended for Most Users)
 > **No Python, Node.js, or terminal commands required!** Everything (the local NDL-OCR engine, runtime, and web interface) is fully self-contained in the release package.
 
-1. Go to the [**Latest GitHub Release (v1.0.6)**](https://github.com/azurebamboo/koshu-reading-workbench/releases/latest).
+1. Go to the [**Latest GitHub Release (v1.0.6)**](https://github.com/azurebamboo/honkoku-reading-workbench/releases/latest).
 2. Download the zip file for your system:
-   - **Windows**: [`koshu-workbench-windows.zip`](https://github.com/azurebamboo/koshu-reading-workbench/releases/latest/download/koshu-workbench-windows.zip)
-   - **macOS**: [`koshu-workbench-macos.zip`](https://github.com/azurebamboo/koshu-reading-workbench/releases/latest/download/koshu-workbench-macos.zip)
+   - **Windows**: [`koshu-workbench-windows.zip`](https://github.com/azurebamboo/honkoku-reading-workbench/releases/latest/download/koshu-workbench-windows.zip)
+   - **macOS**: [`koshu-workbench-macos.zip`](https://github.com/azurebamboo/honkoku-reading-workbench/releases/latest/download/koshu-workbench-macos.zip)
 3. Extract (unzip) the folder anywhere on your computer.
 4. Launch the application:
    - **Windows**: Double-click **`start.bat`**
@@ -58,7 +58,7 @@ If you use an AI coding assistant (such as **Google Antigravity**, **Claude Code
 
 1. Give your AI agent this repository URL or clone it into your workspace:
    ```text
-   https://github.com/azurebamboo/koshu-reading-workbench
+   https://github.com/azurebamboo/honkoku-reading-workbench
    ```
 2. Simply ask your agent in natural language:
    - *"Install and start the OCR Reading Desk"*
@@ -186,7 +186,7 @@ This workbench is an **active, ongoing open-source project**. Archival materials
 ### How to Open an Issue (Beginner Friendly)
 
 1. **Sign up for GitHub**: If you don't already have an account, create a free account at [github.com/signup](https://github.com/signup).
-2. **Go to the Issues tab**: Visit the [**Issues Page for this repository**](https://github.com/azurebamboo/koshu-reading-workbench/issues).
+2. **Go to the Issues tab**: Visit the [**Issues Page for this repository**](https://github.com/azurebamboo/honkoku-reading-workbench/issues).
 3. **Click "New Issue"**: Click the green **New Issue** button near the top right.
 4. **Describe the issue**:
    - What operating system you are using (Windows 10/11, macOS, Linux).
@@ -216,5 +216,12 @@ This application relies on and extends the remarkable open-source work of:
   Special thanks and deep gratitude to the **National Diet Library (NDL) Lab (国立国会図書館)** for developing and open-sourcing **NDL-OCR** and **NDLOCR-Lite**. Their specialized machine learning models for Japanese historical text, vertical typography, and archival documents power the core offline OCR capabilities of this workbench.
 - **[Lucide Icons](https://lucide.dev/)**: For the clean UI icon library.
 - **[FastAPI](https://fastapi.tiangolo.com/)** & **[Vite](https://vitejs.dev/)**: For the robust backend and modern frontend tooling.
+
+---
+
+## 🤖 Note on Development
+
+> **Note on Development**: This project was largely vibe-coded with AI assistance under human direction. Code reviews, bug reports, and community PRs are warmly welcomed!
+
 
 
